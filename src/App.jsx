@@ -327,17 +327,16 @@ function App() {
   // Quest filters
   const [questFilter, setQuestFilter] = useState('all') // all, daily, weekly, completed
   
-  // Swipe state - improved for mobile
+  // Swipe state - mobile-optimized reveal pattern
   const [swipeState, setSwipeState] = useState({
     questId: null,
     offsetX: 0,
-    stage: 'idle', // idle, dragging, revealed, deep
+    stage: 'idle', // idle, dragging, revealed
     startX: 0,
     startY: 0,
     isScrolling: false
   })
-  const swipeThreshold = 80
-  const deepSwipeThreshold = 150
+  const swipeThreshold = 100
   
   // Add Quest Modal States
   const [addModalOpen, setAddModalOpen] = useState(false)
@@ -685,7 +684,7 @@ function App() {
   }
 
   // ==========================================
-  // SWIPE & QUEST ACTIONS (TELEGRAM-STYLE)
+  // SWIPE & QUEST ACTIONS (REVEAL ON LEFT SWIPE)
   // ==========================================
   
   const closeAllSwipes = () => {
@@ -711,13 +710,13 @@ function App() {
     const deltaX = swipeState.startX - touch.clientX
     const deltaY = touch.clientY - swipeState.startY
     
-    // Detect scroll vs swipe (if vertical movement > horizontal, treat as scroll)
-    if (!swipeState.isScrolling && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+    // Detect scroll vs swipe - if vertical movement is greater, treat as scroll
+    if (!swipeState.isScrolling && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 15) {
       setSwipeState(prev => ({ ...prev, isScrolling: true }))
       return
     }
     
-    // Only allow left swipe (positive deltaX)
+    // Only allow left swipe (deltaX > 0 means swiping left)
     if (deltaX <= 0) {
       if (swipeState.offsetX > 0) {
         setSwipeState(prev => ({ ...prev, offsetX: 0, stage: 'idle' }))
@@ -725,14 +724,9 @@ function App() {
       return
     }
     
-    const newOffset = Math.min(deltaX, 200) // Cap at 200px
-    
-    let stage = 'dragging'
-    if (newOffset >= deepSwipeThreshold) {
-      stage = 'deep'
-    } else if (newOffset >= swipeThreshold) {
-      stage = 'revealed'
-    }
+    // Smooth tracking - card follows finger
+    const newOffset = Math.min(deltaX, 160)
+    const stage = newOffset >= swipeThreshold ? 'revealed' : 'dragging'
     
     setSwipeState(prev => ({
       ...prev,
@@ -744,19 +738,11 @@ function App() {
   const handleTouchEnd = () => {
     if (!swipeState.questId) return
     
-    const { offsetX, stage } = swipeState
+    const { offsetX } = swipeState
     
     if (offsetX < swipeThreshold / 2) {
-      // Snap back
+      // Snap back - not enough swipe
       setSwipeState(prev => ({ ...prev, offsetX: 0, stage: 'idle' }))
-    } else if (stage === 'deep' && offsetX >= deepSwipeThreshold) {
-      // Trigger quick action (mark complete by default)
-      const quest = state.quests.find(q => q.id === swipeState.questId)
-      if (quest && !quest.completed) {
-        completeQuest(swipeState.questId)
-        // Haptic feedback simulation via visual feedback
-      }
-      setSwipeState(prev => ({ ...prev, offsetX: 0, stage: 'idle', questId: null }))
     } else {
       // Keep revealed
       setSwipeState(prev => ({ ...prev, offsetX: swipeThreshold, stage: 'revealed' }))
@@ -848,14 +834,6 @@ function App() {
     saveData(newState)
     closeAllSwipes()
     showToast(quest?.paused ? '▶️' : '⏸️', quest?.paused ? 'Quest resumed' : 'Quest paused')
-  }
-
-  const completeFromSwipe = (questId) => {
-    const quest = state.quests.find(q => q.id === questId)
-    if (quest && !quest.completed) {
-      completeQuest(questId)
-    }
-    closeAllSwipes()
   }
 
   // ==========================================
@@ -1562,14 +1540,7 @@ Current user context: ${getContext()}` },
                       </div>
                       
                       {isSwiped && (
-                        <div className="swipe-panel" style={{ opacity: Math.min(1, offset / swipeThreshold) }}>
-                          <button 
-                            className={`swipe-action complete ${isDeep ? 'armed' : ''}`} 
-                            onClick={(e) => { e.stopPropagation(); completeFromSwipe(q.id); }}
-                          >
-                            <span>✓</span>
-                            <small>Done</small>
-                          </button>
+                        <div className="swipe-panel">
                           <button 
                             className="swipe-action edit" 
                             onClick={(e) => { e.stopPropagation(); openEditModal(q); }}
@@ -1582,6 +1553,7 @@ Current user context: ${getContext()}` },
                             onClick={(e) => { e.stopPropagation(); setMoreMenuQuest(q); }}
                           >
                             <span>•••</span>
+                            <small>More</small>
                           </button>
                         </div>
                       )}
