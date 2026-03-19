@@ -1,0 +1,9 @@
+node_modules
+dist
+.DS_Store
+*.log
+
+# Environment variables - DO NOT PUSH THESE
+.env
+.env.local
+.env.*.local
