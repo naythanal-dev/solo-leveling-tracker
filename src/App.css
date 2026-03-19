@@ -2022,42 +2022,51 @@ body {
   color: var(--bg);
 }
 
-/* ========== SWIPE ACTIONS ========== */
-.swipe-actions {
+/* ========== SWIPE ACTIONS (LEFT SWIPE) ========== */
+.quest-card.swiped-left {
+  transform: translateX(-100px);
+}
+
+.swipe-actions-left {
   position: absolute;
   right: 0;
   top: 0;
   bottom: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   padding: 0 8px;
   background: var(--bg2);
-  animation: slideActions 0.2s ease;
+  animation: slideActionsLeft 0.25s ease;
 }
 
-@keyframes slideActions {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+@keyframes slideActionsLeft {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 .swipe-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 12px 14px;
+  gap: 2px;
+  padding: 14px 12px;
   border: none;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 600;
+  border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: 'Rajdhani', sans-serif;
+  min-width: 60px;
 }
 
 .swipe-btn span {
-  font-size: 18px;
+  font-size: 20px;
+}
+
+.swipe-btn small {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
 }
 
 .swipe-btn.edit {
@@ -2076,7 +2085,8 @@ body {
 }
 
 .swipe-btn:hover {
-  transform: scale(1.05);
+  transform: scale(1.08);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
 
 /* ========== EMPTY STATE ========== */

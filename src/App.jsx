@@ -675,7 +675,7 @@ function App() {
   }
 
   // ==========================================
-  // SWIPE & QUEST ACTIONS
+  // SWIPE & QUEST ACTIONS (LEFT SWIPE ONLY)
   // ==========================================
   const handleSwipeStart = (e, questId) => {
     startX.current = e.touches ? e.touches[0].clientX : e.clientX
@@ -685,14 +685,20 @@ function App() {
   const handleSwipeMove = (e) => {
     if (!swipedQuestId) return
     const currentX = e.touches ? e.touches[0].clientX : e.clientX
-    const diff = currentX - startX.current
-    if (diff > 100) {
+    const diff = startX.current - currentX // Negative = swiping right, Positive = swiping left
+    
+    // Cancel swipe if going right (diff < 0)
+    if (diff < 0) {
       setSwipedQuestId(null)
     }
   }
 
   const handleSwipeEnd = () => {
-    // Keep swiped state for button visibility
+    // Swipe state stays if swiped left
+  }
+
+  const isSwipedLeft = (questId) => {
+    return swipedQuestId === questId
   }
 
   const openEditModal = (quest) => {
@@ -1445,11 +1451,11 @@ Current user context: ${getContext()}` },
                 filteredQuests.map(q => (
                   <div 
                     key={q.id} 
-                    className={`quest-card ${q.completed ? 'completed' : ''} ${q.paused ? 'paused' : ''} ${swipedQuestId === q.id ? 'swiped' : ''}`}
+                    className={`quest-card ${q.completed ? 'completed' : ''} ${q.paused ? 'paused' : ''} ${isSwipedLeft(q.id) ? 'swiped-left' : ''}`}
                     onTouchStart={(e) => handleSwipeStart(e, q.id)}
                     onTouchMove={handleSwipeMove}
                     onTouchEnd={handleSwipeEnd}
-                    onClick={() => swipedQuestId === q.id && setSwipedQuestId(null)}
+                    onClick={() => isSwipedLeft(q.id) && setSwipedQuestId(null)}
                   >
                     <div className="quest-card-content">
                       <div className="quest-icon-wrapper">
@@ -1475,16 +1481,19 @@ Current user context: ${getContext()}` },
                       </button>
                     </div>
                     
-                    {swipedQuestId === q.id && (
-                      <div className="swipe-actions">
+                    {isSwipedLeft(q.id) && (
+                      <div className="swipe-actions-left">
                         <button className="swipe-btn edit" onClick={() => openEditModal(q)}>
-                          <span>✏️</span> Edit
+                          <span>✏️</span>
+                          <small>Edit</small>
                         </button>
                         <button className="swipe-btn pause" onClick={() => pauseQuest(q.id)}>
-                          <span>{q.paused ? '▶️' : '⏸️'}</span> {q.paused ? 'Resume' : 'Pause'}
+                          <span>{q.paused ? '▶️' : '⏸️'}</span>
+                          <small>{q.paused ? 'Resume' : 'Pause'}</small>
                         </button>
                         <button className="swipe-btn delete" onClick={() => confirmDeleteQuest(q)}>
-                          <span>🗑️</span> Delete
+                          <span>🗑️</span>
+                          <small>Delete</small>
                         </button>
                       </div>
                     )}
