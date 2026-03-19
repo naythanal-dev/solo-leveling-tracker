@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { initializeApp } from 'firebase/app'
-import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth'
-import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore'
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, deleteUser } from 'firebase/auth'
+import { getFirestore, doc, setDoc, getDoc, collection, addDoc, updateDoc, deleteDoc, getDocs, query, where, orderBy, serverTimestamp } from 'firebase/firestore'
 
 // ==========================================
 // FIREBASE CONFIG - FROM ENVIRONMENT VARIABLES
@@ -26,6 +26,60 @@ const googleProvider = new GoogleAuthProvider()
 // ==========================================
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || ""
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+// ==========================================
+// FIREBASE CHAT HELPERS
+// ==========================================
+const createChat = async (userId, title = 'New Chat') => {
+  const chatRef = await addDoc(collection(db, 'chats'), {
+    userId,
+    title,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    messages: []
+  })
+  return chatRef.id
+}
+
+const saveChatMessage = async (chatId, message) => {
+  await updateDoc(doc(db, 'chats', chatId), {
+    messages: [...(await getChatMessages(chatId)), message],
+    updatedAt: new Date().toISOString()
+  })
+}
+
+const getChatMessages = async (chatId) => {
+  const chatDoc = await getDoc(doc(db, 'chats', chatId))
+  return chatDoc.exists() ? (chatDoc.data().messages || []) : []
+}
+
+const updateChatTitle = async (chatId, title) => {
+  await updateDoc(doc(db, 'chats', chatId), {
+    title,
+    updatedAt: new Date().toISOString()
+  })
+}
+
+const getUserChats = async (userId) => {
+  const q = query(collection(db, 'chats'), where('userId', '==', userId), orderBy('updatedAt', 'desc'))
+  const snapshot = await getDocs(q)
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+const deleteUserChat = async (chatId) => {
+  await deleteDoc(doc(db, 'chats', chatId))
+}
+
+const deleteAllUserChats = async (userId) => {
+  const chats = await getUserChats(userId)
+  await Promise.all(chats.map(chat => deleteDoc(doc(db, 'chats', chat.id))))
+}
+
+const deleteAllUserData = async (userId) => {
+  await deleteDoc(doc(db, 'users', userId))
+  await deleteAllUserChats(userId)
+  localStorage.removeItem('soloLevelingState')
+}
 
 // ==========================================
 // GAME CONSTANTS
@@ -222,13 +276,27 @@ function App() {
   const [screen, setScreen] = useState('splash')
   const [slide, setSlide] = useState(1)
   const [toast, setToast] = useState(null)
+  
+  // Multi-chat states
   const [chatOpen, setChatOpen] = useState(false)
+  const [chatListOpen, setChatListOpen] = useState(false)
+  const [chats, setChats] = useState([])
+  const [currentChatId, setCurrentChatId] = useState(null)
   const [chatMessages, setChatMessages] = useState([
     { role: 'assistant', content: 'Greetings, Hunter. I am your **AI Oracle**, here to guide your journey. Ask me anything about your habits, progress, or how to become stronger.' }
   ])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
+  const [pendingAction, setPendingAction] = useState(null)
   const chatEndRef = useRef(null)
+  
+  // Task preview modal
+  const [taskPreviewOpen, setTaskPreviewOpen] = useState(false)
+  const [taskPreviewData, setTaskPreviewData] = useState(null)
+  
+  // Reset modal
+  const [resetModalOpen, setResetModalOpen] = useState(false)
+  const [resetConfirmInput, setResetConfirmInput] = useState('')
   
   // Add Quest Modal States
   const [addModalOpen, setAddModalOpen] = useState(false)
@@ -309,6 +377,22 @@ function App() {
           if (localData.initialized) {
             setScreen('home')
           }
+        }
+      }
+      
+      await loadUserChats(uid)
+      
+      if (user && !currentChatId) {
+        const userChats = await getUserChats(uid)
+        if (userChats.length > 0) {
+          setCurrentChatId(userChats[0].id)
+          setChatMessages(userChats[0].messages?.length > 0 ? userChats[0].messages : [
+            { role: 'assistant', content: 'Greetings, Hunter. I am your **AI Oracle**, here to guide your journey. Ask me anything about your habits, progress, or how to become stronger.' }
+          ])
+        } else {
+          const chatId = await createChat(uid, 'Getting Started')
+          await loadUserChats(uid)
+          setCurrentChatId(chatId)
         }
       }
     } catch (e) {
@@ -613,16 +697,136 @@ Current user context: ${context}` },
   }
 
   // ==========================================
+  // MULTI-CHAT MANAGEMENT
+  // ==========================================
+  const loadUserChats = async (userId) => {
+    try {
+      const userChats = await getUserChats(userId)
+      setChats(userChats)
+    } catch (e) {
+      console.error('Error loading chats:', e)
+    }
+  }
+
+  const startNewChat = async () => {
+    const chatId = await createChat(user.uid, 'New Chat')
+    await loadUserChats(user.uid)
+    setCurrentChatId(chatId)
+    setChatMessages([
+      { role: 'assistant', content: 'Greetings, Hunter. I am your **AI Oracle**, here to guide your journey. Ask me anything about your habits, progress, or how to become stronger.' }
+    ])
+    setChatListOpen(false)
+    setChatOpen(true)
+  }
+
+  const switchToChat = async (chatId) => {
+    setCurrentChatId(chatId)
+    const chat = chats.find(c => c.id === chatId)
+    if (chat && chat.messages) {
+      setChatMessages(chat.messages.length > 0 ? chat.messages : [
+        { role: 'assistant', content: 'Greetings, Hunter. I am your **AI Oracle**, here to guide your journey. Ask me anything about your habits, progress, or how to become stronger.' }
+      ])
+    }
+    setChatListOpen(false)
+  }
+
+  const deleteChatById = async (chatId) => {
+    await deleteUserChat(chatId)
+    await loadUserChats(user.uid)
+    if (currentChatId === chatId) {
+      if (chats.length > 1) {
+        const nextChat = chats.find(c => c.id !== chatId)
+        if (nextChat) await switchToChat(nextChat.id)
+      } else {
+        await startNewChat()
+      }
+    }
+    showToast('🗑️', 'Chat deleted')
+  }
+
+  const deleteAllChats = async () => {
+    await deleteAllUserChats(user.uid)
+    setChats([])
+    await startNewChat()
+    showToast('🗑️', 'All chats deleted')
+  }
+
+  const renameCurrentChat = async (newTitle) => {
+    if (!currentChatId) return
+    await updateChatTitle(currentChatId, newTitle)
+    await loadUserChats(user.uid)
+  }
+
+  // ==========================================
   // AI CHAT FUNCTIONS
   // ==========================================
-  const getContext = () => `User: ${state.username}, Level: ${state.level}, Rank: ${state.rank}, Streak: ${state.streak} days, Total XP: ${state.totalXP}, Stats: STR ${state.stats.strength}, INT ${state.stats.intelligence}, DIS ${state.stats.discipline}, FOC ${state.stats.focus}, VIT ${state.stats.vitality}, WIL ${state.stats.willpower}, Path: ${state.path}, Goals: ${state.goals.join(', ')}`
+  const getContext = () => `User: ${state.username}, Level: ${state.level}, Rank: ${state.rank}, Streak: ${state.streak} days, Total XP: ${state.totalXP}, Stats: STR ${state.stats.strength}, INT ${state.stats.intelligence}, DIS ${state.stats.discipline}, FOC ${state.stats.focus}, VIT ${state.stats.vitality}, WIL ${state.stats.willpower}, CHA ${state.stats.charisma}, Path: ${state.path}, Goals: ${state.goals.join(', ')}`
+
+  const extractActionsFromMessage = (message) => {
+    const actions = []
+    const text = message.toLowerCase()
+    
+    const taskPatterns = [
+      { pattern: /read\s+(\d+)\s*pages?/i, title: 'Read {n} Pages', stat: 'intelligence', category: 'study', difficulty: 'easy' },
+      { pattern: /study|learn|course|tutorial/i, title: 'Study Session', stat: 'intelligence', category: 'study', difficulty: 'normal' },
+      { pattern: /workout|gym|exercise|fitness/i, title: 'Workout', stat: 'strength', category: 'fitness', difficulty: 'normal' },
+      { pattern: /sleep.*(\d+)|(\d+).*sleep/i, title: 'Sleep by {t}', stat: 'vitality', category: 'health', difficulty: 'normal' },
+      { pattern: /walk|jog|run|cardio/i, title: 'Cardio Session', stat: 'strength', category: 'fitness', difficulty: 'easy' },
+      { pattern: /meditat|breath|calm/i, title: 'Meditation', stat: 'willpower', category: 'mindset', difficulty: 'easy' },
+      { pattern: /water|hydrate/i, title: 'Drink Water', stat: 'vitality', category: 'health', difficulty: 'easy' },
+      { pattern: /focus|deep work|concentrat/i, title: 'Deep Work', stat: 'focus', category: 'productivity', difficulty: 'normal' },
+      { pattern: /no\s+junk|no\s+food|healthy/i, title: 'Eat Healthy', stat: 'willpower', category: 'health', difficulty: 'normal' },
+    ]
+    
+    for (const p of taskPatterns) {
+      if (p.pattern.test(text)) {
+        actions.push({
+          type: 'add_task',
+          title: p.title,
+          stat: p.stat,
+          category: p.category,
+          difficulty: p.difficulty,
+          xp: DIFFICULTY_XP[p.difficulty],
+          coins: DIFFICULTY_COINS[p.difficulty]
+        })
+        break
+      }
+    }
+    
+    const completedPatterns = [
+      { pattern: /(?:just|already|did|finished|completed)\s+(?:a|my|the)?\s*(workout|gym|exercise)/i, match: 'workout', title: 'Workout', stat: 'strength', xp: DIFFICULTY_XP.normal, coins: DIFFICULTY_COINS.normal },
+      { pattern: /(?:just|already|did|finished|completed)\s+(?:a|my|the)?\s*(study|studied|learning)/i, match: 'study', title: 'Study Session', stat: 'intelligence', xp: DIFFICULTY_XP.normal, coins: DIFFICULTY_COINS.normal },
+      { pattern: /(?:just|already|did|finished|completed)\s+(?:a|my|the)?\s*(read|reading)/i, match: 'read', title: 'Read 20 Pages', stat: 'intelligence', xp: DIFFICULTY_XP.easy, coins: DIFFICULTY_COINS.easy },
+      { pattern: /(?:slept|sleeping|went\s+to\s+bed)\s*(?:before|at|by)?\s*(\d+)/i, match: 'sleep', title: 'Early Sleep', stat: 'vitality', xp: DIFFICULTY_XP.normal, coins: DIFFICULTY_COINS.normal },
+      { pattern: /(?:just|already|did|finished|completed)\s+(?:a|my|the)?\s*(walk|ran|jog)/i, match: 'cardio', title: 'Cardio Session', stat: 'strength', xp: DIFFICULTY_XP.easy, coins: DIFFICULTY_COINS.easy },
+    ]
+    
+    for (const p of completedPatterns) {
+      if (p.pattern.test(text)) {
+        const matchingQuest = state.quests.find(q => q.title.toLowerCase().includes(p.match) && !q.completed)
+        actions.push({
+          type: 'mark_complete',
+          questId: matchingQuest?.id || null,
+          title: p.title,
+          stat: p.stat,
+          xp: p.xp,
+          coins: p.coins,
+          hasExistingQuest: !!matchingQuest
+        })
+        break
+      }
+    }
+    
+    return actions
+  }
 
   const sendChatMessage = async () => {
     if (!chatInput.trim() || chatLoading) return
     
     const userMessage = chatInput.trim()
     setChatInput('')
-    setChatMessages(prev => [...prev, { role: 'user', content: userMessage }])
+    const newMessages = [...chatMessages, { role: 'user', content: userMessage }]
+    setChatMessages(newMessages)
     setChatLoading(true)
 
     try {
@@ -635,8 +839,14 @@ Current user context: ${context}` },
         body: JSON.stringify({
           model: 'llama-3.1-8b-instant',
           messages: [
-            { role: 'system', content: `You are an ancient AI Oracle guiding a user in a gamified habit tracker. Keep responses short (2-3 sentences), motivating, and actionable. Use **bold** for important words. Current context: ${getContext()}` },
-            ...chatMessages,
+            { role: 'system', content: `You are an ancient AI Oracle guiding a user in a gamified habit tracker called Solo Leveling. 
+
+IMPORTANT: When the user describes completing a task (e.g., "I worked out", "I studied for 2 hours", "I slept early"), acknowledge it and offer to log their completion.
+
+When you recommend habits or tasks, keep responses short (2-3 sentences) and motivating. Use **bold** for important words.
+
+Current user context: ${getContext()}` },
+            ...newMessages.slice(0, -1),
             { role: 'user', content: userMessage }
           ],
           temperature: 0.7,
@@ -645,11 +855,138 @@ Current user context: ${context}` },
       })
       const data = await response.json()
       const reply = data.choices?.[0]?.message?.content || 'The Oracle is silent for now.'
-      setChatMessages(prev => [...prev, { role: 'assistant', content: reply }])
+      
+      const replyMessage = { role: 'assistant', content: reply }
+      const finalMessages = [...newMessages, replyMessage]
+      setChatMessages(finalMessages)
+      
+      const actions = extractActionsFromMessage(userMessage + ' ' + reply)
+      if (actions.length > 0) {
+        setPendingAction(actions[0])
+      }
+      
+      if (currentChatId) {
+        await setDoc(doc(db, 'chats', currentChatId), {
+          messages: finalMessages,
+          updatedAt: new Date().toISOString()
+        }, { merge: true })
+      }
     } catch (e) {
-      setChatMessages(prev => [...prev, { role: 'assistant', content: 'The Oracle has lost connection. Please try again.' }])
+      setChatMessages([...newMessages, { role: 'assistant', content: 'The Oracle has lost connection. Please try again.' }])
     }
     setChatLoading(false)
+  }
+
+  const openTaskPreview = (action) => {
+    if (action.type === 'add_task') {
+      setTaskPreviewData({
+        title: action.title,
+        stat: action.stat,
+        category: action.category,
+        difficulty: action.difficulty,
+        xp: action.xp,
+        coins: action.coins,
+        frequency: 'daily',
+        statValue: Math.ceil(action.xp / 5),
+        icon: getStatIcon(action.stat)
+      })
+    } else if (action.type === 'mark_complete') {
+      setTaskPreviewData({
+        ...action,
+        icon: getStatIcon(action.stat)
+      })
+    }
+    setTaskPreviewOpen(true)
+    setPendingAction(null)
+  }
+
+  const applyPendingAction = (actionType) => {
+    if (!pendingAction) return
+    
+    if (actionType === 'add_task') {
+      openTaskPreview(pendingAction)
+    } else if (actionType === 'mark_complete') {
+      if (pendingAction.questId) {
+        completeQuest(pendingAction.questId)
+        showToast('✅', `${pendingAction.title} completed!`)
+      } else {
+        openTaskPreview(pendingAction)
+      }
+    }
+    setPendingAction(null)
+  }
+
+  const saveTaskFromPreview = () => {
+    if (!taskPreviewData) return
+    
+    if (taskPreviewData.type === 'mark_complete') {
+      const xp = taskPreviewData.xp
+      const coins = taskPreviewData.coins
+      const newState = {
+        ...state,
+        totalQuests: state.totalQuests + 1,
+        currentXP: state.currentXP + xp,
+        totalXP: state.totalXP + xp,
+        coins: state.coins + coins,
+        stats: { ...state.stats, [taskPreviewData.stat]: (state.stats[taskPreviewData.stat] || 0) + Math.ceil(xp / 5) }
+      }
+      const requiredXP = getRequiredXP(newState.level)
+      if (newState.currentXP >= requiredXP) {
+        newState.currentXP -= requiredXP
+        newState.level++
+        newState.coins += 50
+        showToast('⚔️', `Level Up! Level ${newState.level}`)
+      }
+      saveData(newState)
+      showToast('✅', `+${xp} XP logged!`)
+    } else {
+      const newQuest = {
+        id: `quest_${Date.now()}`,
+        title: taskPreviewData.title,
+        stat: taskPreviewData.stat,
+        category: taskPreviewData.category,
+        difficulty: taskPreviewData.difficulty,
+        xp: taskPreviewData.xp,
+        coins: taskPreviewData.coins,
+        statValue: taskPreviewData.statValue,
+        completed: false,
+        streak: 0,
+        icon: taskPreviewData.icon
+      }
+      const newState = { ...state, quests: [...state.quests, newQuest] }
+      saveData(newState)
+      showToast('✅', `Quest "${taskPreviewData.title}" added!`)
+    }
+    
+    setTaskPreviewOpen(false)
+    setTaskPreviewData(null)
+  }
+
+  // ==========================================
+  // RESET FUNCTIONS
+  // ==========================================
+  const handleFullReset = async () => {
+    if (resetConfirmInput !== 'RESET MY DATA') return
+    
+    try {
+      await deleteAllUserData(user.uid)
+      await signOut(auth)
+      setScreen('splash')
+      setState({
+        username: '', avatar: '🧙', path: '', goals: [], level: 1, currentXP: 0, totalXP: 0,
+        coins: 0, rank: 'Trainee', title: 'Trainee Hunter', streak: 0, bestStreak: 0,
+        stats: { strength: 0, intelligence: 0, discipline: 0, focus: 0, vitality: 0, willpower: 0, charisma: 0 },
+        quests: [], totalQuests: 0, achievements: [], initialized: false
+      })
+      setChats([])
+      setCurrentChatId(null)
+      setResetModalOpen(false)
+      setResetConfirmInput('')
+      showToast('🔄', 'All data reset successfully')
+    } catch (e) {
+      console.error('Reset error:', e)
+      showToast('❌', 'Failed to reset data')
+    }
   }
 
   // ==========================================
@@ -885,7 +1222,84 @@ Current user context: ${context}` },
             <div className="nav-item active"><span>🏠</span><small>Home</small></div>
             <div className="nav-item" onClick={() => setChatOpen(true)}><span>💬</span><small>Oracle</small></div>
             <div className="nav-item" onClick={() => setScreen('profile')}><span>👤</span><small>Profile</small></div>
+            <div className="nav-item" onClick={() => setScreen('settings')}><span>⚙️</span><small>Settings</small></div>
           </nav>
+        </div>
+      )}
+
+      {/* Settings Screen */}
+      {screen === 'settings' && (
+        <div className="settings">
+          <button className="back" onClick={() => setScreen('home')}>← Back</button>
+          
+          <div className="settings-header">
+            <h1>Settings</h1>
+          </div>
+
+          <div className="settings-section">
+            <h3>Account</h3>
+            <div className="settings-card">
+              <div className="settings-item" onClick={() => setScreen('profile')}>
+                <span>👤</span>
+                <div>
+                  <strong>Profile</strong>
+                  <small>View your stats and achievements</small>
+                </div>
+                <span className="arrow">›</span>
+              </div>
+              <div className="settings-item" onClick={signOutUser}>
+                <span>🚪</span>
+                <div>
+                  <strong>Sign Out</strong>
+                  <small>Sign out of your account</small>
+                </div>
+                <span className="arrow">›</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-section">
+            <h3>Privacy & Data</h3>
+            <div className="settings-card danger">
+              <div className="settings-item" onClick={() => setResetModalOpen(true)}>
+                <span>⚠️</span>
+                <div>
+                  <strong>Reset All Data</strong>
+                  <small>Permanently delete all your progress</small>
+                </div>
+                <span className="arrow">›</span>
+              </div>
+              <div className="settings-item" onClick={deleteAllChats}>
+                <span>🗑️</span>
+                <div>
+                  <strong>Delete All AI Chats</strong>
+                  <small>Remove all chat history</small>
+                </div>
+                <span className="arrow">›</span>
+              </div>
+              <div className="settings-item" onClick={() => setChatListOpen(true)}>
+                <span>💬</span>
+                <div>
+                  <strong>Manage Chats</strong>
+                  <small>View and delete individual chats</small>
+                </div>
+                <span className="arrow">›</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-section">
+            <h3>About</h3>
+            <div className="settings-card">
+              <div className="settings-item">
+                <span>⚔️</span>
+                <div>
+                  <strong>Solo Leveling Tracker</strong>
+                  <small>Version 1.0.0</small>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1059,19 +1473,67 @@ Current user context: ${context}` },
         </div>
       )}
 
+      {/* Chat List Sidebar */}
+      {chatListOpen && (
+        <div className="chat-sidebar-overlay" onClick={() => setChatListOpen(false)}>
+          <div className="chat-sidebar" onClick={e => e.stopPropagation()}>
+            <div className="chat-sidebar-header">
+              <h3>Chat History</h3>
+              <button onClick={() => setChatListOpen(false)}>×</button>
+            </div>
+            <button className="new-chat-btn" onClick={startNewChat}>
+              <span>✏️</span> New Chat
+            </button>
+            <div className="chat-list">
+              {chats.map(chat => (
+                <div key={chat.id} className={`chat-list-item ${chat.id === currentChatId ? 'active' : ''}`} onClick={() => switchToChat(chat.id)}>
+                  <div className="chat-list-info">
+                    <strong>{chat.title || 'New Chat'}</strong>
+                    <small>{chat.updatedAt ? new Date(chat.updatedAt).toLocaleDateString() : ''}</small>
+                  </div>
+                  <button className="chat-delete-btn" onClick={(e) => { e.stopPropagation(); deleteChatById(chat.id); }}>🗑️</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Chat Modal */}
       {chatOpen && (
         <div className="chat">
           <div className="chat-header">
-            <div>
-              <h3>Oracle</h3>
-              <small>AI Assistant</small>
+            <div className="chat-header-left">
+              <button className="chat-list-btn" onClick={() => setChatListOpen(true)}>☰</button>
+              <div>
+                <h3>{chats.find(c => c.id === currentChatId)?.title || 'Oracle'}</h3>
+                <small>AI Assistant</small>
+              </div>
             </div>
-            <button onClick={() => setChatOpen(false)}>×</button>
+            <div className="chat-header-actions">
+              <button className="chat-action-btn" onClick={startNewChat} title="New Chat">✏️</button>
+              <button onClick={() => setChatOpen(false)}>×</button>
+            </div>
           </div>
           <div className="chat-messages">
             {chatMessages.map((m, i) => (
-              <div key={i} className={`message ${m.role}`} dangerouslySetInnerHTML={{ __html: parseMarkdown(m.content) }} />
+              <div key={i} className={`message ${m.role}`}>
+                <div dangerouslySetInnerHTML={{ __html: parseMarkdown(m.content) }} />
+                {m.role === 'assistant' && i === chatMessages.length - 1 && pendingAction && (
+                  <div className="action-buttons">
+                    {pendingAction.type === 'add_task' && (
+                      <button className="action-btn" onClick={() => applyPendingAction('add_task')}>
+                        ➕ Add as Task
+                      </button>
+                    )}
+                    {pendingAction.type === 'mark_complete' && (
+                      <button className="action-btn success" onClick={() => applyPendingAction('mark_complete')}>
+                        ✅ Mark Complete
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             ))}
             {chatLoading && <div className="message assistant">Thinking...</div>}
             <div ref={chatEndRef} />
@@ -1085,6 +1547,84 @@ Current user context: ${context}` },
               onKeyPress={e => e.key === 'Enter' && chatInput && !chatLoading && (sendChatMessage(), setChatInput(''))}
             />
             <button onClick={() => chatInput && !chatLoading && (sendChatMessage(), setChatInput(''))} disabled={chatLoading}>➤</button>
+          </div>
+        </div>
+      )}
+
+      {/* Task Preview Modal */}
+      {taskPreviewOpen && taskPreviewData && (
+        <div className="modal-overlay" onClick={() => setTaskPreviewOpen(false)}>
+          <div className="task-preview-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{taskPreviewData.type === 'mark_complete' ? 'Log Completion' : 'Add Task'}</h2>
+              <button onClick={() => setTaskPreviewOpen(false)}>×</button>
+            </div>
+            <div className="task-preview-content">
+              <div className="task-preview-icon">{taskPreviewData.icon}</div>
+              <h3>{taskPreviewData.title}</h3>
+              
+              <div className="task-preview-details">
+                <div className="task-detail-row">
+                  <span>Difficulty:</span>
+                  <span className={`diff diff-${taskPreviewData.difficulty}`}>{taskPreviewData.difficulty?.toUpperCase() || 'NORMAL'}</span>
+                </div>
+                <div className="task-detail-row">
+                  <span>XP Reward:</span>
+                  <span className="xp-reward">+{taskPreviewData.xp} XP</span>
+                </div>
+                <div className="task-detail-row">
+                  <span>Coin Reward:</span>
+                  <span className="coin-reward">+{taskPreviewData.coins} 🪙</span>
+                </div>
+                <div className="task-detail-row">
+                  <span>Primary Stat:</span>
+                  <span>{getStatIcon(taskPreviewData.stat)} {getStatName(taskPreviewData.stat)}</span>
+                </div>
+              </div>
+              
+              {taskPreviewData.type === 'mark_complete' && taskPreviewData.hasExistingQuest && (
+                <p className="task-preview-note">This will mark your existing quest as complete!</p>
+              )}
+            </div>
+            <div className="task-preview-actions">
+              <button className="btn-secondary" onClick={() => setTaskPreviewOpen(false)}>Cancel</button>
+              <button className="btn-primary" onClick={saveTaskFromPreview}>
+                {taskPreviewData.type === 'mark_complete' ? 'Log Completion' : 'Add Task'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Confirmation Modal */}
+      {resetModalOpen && (
+        <div className="modal-overlay" onClick={() => setResetModalOpen(false)}>
+          <div className="reset-modal" onClick={e => e.stopPropagation()}>
+            <div className="reset-modal-icon">⚠️</div>
+            <h2>Reset All Data?</h2>
+            <p>This will permanently delete:</p>
+            <ul className="reset-list">
+              <li>Profile data & stats</li>
+              <li>Levels, XP & rank progress</li>
+              <li>All quests & habits</li>
+              <li>Achievements & streaks</li>
+              <li>Coins & inventory</li>
+              <li>AI chat history</li>
+            </ul>
+            <p className="reset-warning">This action cannot be undone!</p>
+            <input
+              type="text"
+              placeholder='Type "RESET MY DATA" to confirm'
+              value={resetConfirmInput}
+              onChange={e => setResetConfirmInput(e.target.value)}
+              className="reset-input"
+            />
+            <div className="reset-actions">
+              <button className="btn-secondary" onClick={() => { setResetModalOpen(false); setResetConfirmInput(''); }}>Cancel</button>
+              <button className="btn-danger" onClick={handleFullReset} disabled={resetConfirmInput !== 'RESET MY DATA'}>
+                Reset Everything
+              </button>
+            </div>
           </div>
         </div>
       )}
