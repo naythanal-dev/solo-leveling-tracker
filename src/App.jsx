@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { initializeApp } from 'firebase/app'
-import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, deleteUser } from 'firebase/auth'
+import { getAuth, signInWithPopup, signInWithRedirect, GoogleAuthProvider, signOut, onAuthStateChanged, getRedirectResult, deleteUser } from 'firebase/auth'
 import { getFirestore, doc, setDoc, getDoc, collection, addDoc, updateDoc, deleteDoc, getDocs, query, where, orderBy, serverTimestamp } from 'firebase/firestore'
 
 // ==========================================
@@ -352,6 +352,17 @@ function App() {
         setLoading(false)
       }
     })
+    
+    getRedirectResult(auth).then(async (result) => {
+      if (result?.user) {
+        setUser(result.user)
+        await loadData(result.user.uid)
+        showToast('✅', 'Welcome, Hunter!')
+      }
+    }).catch((e) => {
+      console.error('Redirect result error:', e)
+    })
+    
     return () => unsubscribe()
   }, [])
 
@@ -438,7 +449,30 @@ function App() {
       showToast('✅', 'Welcome, Hunter!')
     } catch (e) {
       console.error('Sign in error:', e)
-      showToast('❌', 'Sign in failed: ' + e.message)
+      let errorMsg = 'Sign in failed'
+      
+      if (e.code === 'auth/unauthorized-domain') {
+        errorMsg = 'Domain not authorized. Add vercel domain to Firebase.'
+      } else if (e.code === 'auth/popup-blocked') {
+        errorMsg = 'Popup blocked. Try again.'
+      } else if (e.code === 'auth/network-request-failed') {
+        errorMsg = 'Network error. Check connection.'
+      } else if (e.code === 'auth/cancelled-popup-request') {
+        errorMsg = 'Sign in cancelled.'
+      } else {
+        errorMsg = 'Sign in failed: ' + (e.message || 'Unknown error')
+      }
+      
+      showToast('❌', errorMsg)
+    }
+  }
+
+  const signInWithRedirect = async () => {
+    try {
+      await signInWithRedirect(auth, googleProvider)
+    } catch (e) {
+      console.error('Redirect sign in error:', e)
+      showToast('❌', 'Redirect sign in failed')
     }
   }
 
@@ -1048,6 +1082,9 @@ Current user context: ${getContext()}` },
               <span>🔵</span> Sign in with Google
             </button>
             <p className="hint">Sign in to sync your progress across all devices</p>
+            <button className="btn-guest" onClick={signInWithRedirect}>
+              Having issues? Try redirect sign-in
+            </button>
           </div>
         </div>
       )}
