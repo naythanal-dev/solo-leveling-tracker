@@ -186,8 +186,18 @@ function App() {
   const signIn = async () => {
     try {
       await signInWithPopup(auth, googleProvider)
+      showToast('✅', 'Welcome, Hunter!')
     } catch (e) {
-      showToast('❌', 'Sign in failed')
+      console.error('Sign in error:', e)
+      let errorMessage = 'Sign in failed'
+      if (e.code === 'auth/operation-not-allowed') {
+        errorMessage = 'Google sign-in not enabled in Firebase'
+      } else if (e.code === 'auth/unauthorized-domain') {
+        errorMessage = 'Domain not authorized - check Firebase settings'
+      } else if (e.code === 'auth/popup-blocked') {
+        errorMessage = 'Popup blocked - allow popups for this site'
+      }
+      showToast('❌', errorMessage)
     }
   }
 
