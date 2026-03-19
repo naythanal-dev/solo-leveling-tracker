@@ -2022,71 +2022,203 @@ body {
   color: var(--bg);
 }
 
-/* ========== SWIPE ACTIONS (LEFT SWIPE) ========== */
-.quest-card.swiped-left {
-  transform: translateX(-100px);
+/* ========== TELEGRAM-STYLE SWIPE ========== */
+.quest-card {
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-y;
+  user-select: none;
 }
 
-.swipe-actions-left {
+.quest-card.swiping {
+  z-index: 10;
+}
+
+.quest-card.swiping .quest-card-content {
+  transition: none;
+}
+
+.quest-card.swiping.deep-swipe {
+  z-index: 11;
+}
+
+.quest-card.swiping.deep-swipe .quest-card-content {
+  box-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
+}
+
+.quest-card-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  gap: 14px;
+  background: var(--card);
+  border: 1px solid rgba(0, 212, 255, 0.15);
+  border-radius: 16px;
+  margin-bottom: 12px;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease;
+  will-change: transform;
+  z-index: 1;
+}
+
+.quest-card:hover .quest-card-content {
+  border-color: rgba(0, 212, 255, 0.4);
+  box-shadow: 0 4px 20px rgba(0, 212, 255, 0.1);
+}
+
+.quest-card.completed .quest-card-content {
+  background: linear-gradient(135deg, rgba(0, 255, 136, 0.05), var(--card));
+  opacity: 0.7;
+}
+
+/* Swipe Panel */
+.swipe-panel {
   position: absolute;
   right: 0;
   top: 0;
   bottom: 0;
   display: flex;
   align-items: center;
+  padding-right: 8px;
   gap: 6px;
-  padding: 0 8px;
-  background: var(--bg2);
-  animation: slideActionsLeft 0.25s ease;
 }
 
-@keyframes slideActionsLeft {
-  from { opacity: 0; transform: translateX(20px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-.swipe-btn {
+.swipe-action {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 14px 12px;
+  justify-content: center;
+  gap: 4px;
+  width: 64px;
+  height: 64px;
   border: none;
-  border-radius: 12px;
+  border-radius: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: 'Rajdhani', sans-serif;
-  min-width: 60px;
 }
 
-.swipe-btn span {
-  font-size: 20px;
+.swipe-action span {
+  font-size: 22px;
 }
 
-.swipe-btn small {
-  font-size: 9px;
+.swipe-action small {
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.swipe-btn.edit {
+.swipe-action.complete {
+  background: linear-gradient(135deg, #00c853, #00e676);
+  color: white;
+}
+
+.swipe-action.complete.armed {
+  background: linear-gradient(135deg, #00ff88, #00ffaa);
+  box-shadow: 0 0 25px rgba(0, 255, 136, 0.5);
+  animation: pulse-armed 0.5s ease infinite;
+}
+
+@keyframes pulse-armed {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.swipe-action.edit {
   background: linear-gradient(135deg, var(--primary), #0099cc);
   color: white;
 }
 
-.swipe-btn.pause {
-  background: linear-gradient(135deg, #9333ea, #c084fc);
-  color: white;
+.swipe-action.more {
+  background: var(--bg2);
+  border: 2px solid rgba(0, 212, 255, 0.3);
+  color: var(--text2);
 }
 
-.swipe-btn.delete {
-  background: linear-gradient(135deg, #ff4757, #ff6b7a);
-  color: white;
+.swipe-action.more span {
+  font-size: 18px;
+  letter-spacing: 2px;
 }
 
-.swipe-btn:hover {
-  transform: scale(1.08);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+.swipe-action:hover {
+  transform: scale(1.05);
+}
+
+.swipe-action:active {
+  transform: scale(0.95);
+}
+
+/* More Menu */
+.more-menu {
+  background: var(--bg2);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 480px;
+  padding: 20px 0;
+  animation: slideUp 0.3s ease;
+}
+
+.more-menu-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.more-menu-header h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.more-menu-header button {
+  width: 32px;
+  height: 32px;
+  background: var(--card);
+  border: none;
+  border-radius: 50%;
+  color: var(--text2);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.more-menu-actions {
+  padding: 12px 20px;
+}
+
+.more-menu-actions button {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  background: none;
+  border: none;
+  border-radius: 12px;
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.more-menu-actions button:hover {
+  background: var(--card);
+}
+
+.more-menu-actions button span {
+  font-size: 22px;
+}
+
+.more-menu-actions button.danger {
+  color: #ff4757;
+  margin-top: 8px;
+}
+
+.more-menu-actions button.danger:hover {
+  background: rgba(255, 71, 87, 0.1);
 }
 
 /* ========== EMPTY STATE ========== */

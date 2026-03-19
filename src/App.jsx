@@ -317,6 +317,9 @@ function App() {
   // Delete confirmation
   const [deleteConfirmQuest, setDeleteConfirmQuest] = useState(null)
   
+  // More menu for swipe actions
+  const [moreMenuQuest, setMoreMenuQuest] = useState(null)
+  
   // Chat search
   const [chatSearchQuery, setChatSearchQuery] = useState('')
   const [filteredChats, setFilteredChats] = useState([])
@@ -324,10 +327,17 @@ function App() {
   // Quest filters
   const [questFilter, setQuestFilter] = useState('all') // all, daily, weekly, completed
   
-  // Swipe state
-  const [swipedQuestId, setSwipedQuestId] = useState(null)
-  const swipeRef = useRef(null)
-  const startX = useRef(0)
+  // Swipe state - improved for mobile
+  const [swipeState, setSwipeState] = useState({
+    questId: null,
+    offsetX: 0,
+    stage: 'idle', // idle, dragging, revealed, deep
+    startX: 0,
+    startY: 0,
+    isScrolling: false
+  })
+  const swipeThreshold = 80
+  const deepSwipeThreshold = 150
   
   // Add Quest Modal States
   const [addModalOpen, setAddModalOpen] = useState(false)
@@ -675,30 +685,86 @@ function App() {
   }
 
   // ==========================================
-  // SWIPE & QUEST ACTIONS (LEFT SWIPE ONLY)
+  // SWIPE & QUEST ACTIONS (TELEGRAM-STYLE)
   // ==========================================
-  const handleSwipeStart = (e, questId) => {
-    startX.current = e.touches ? e.touches[0].clientX : e.clientX
-    setSwipedQuestId(questId)
+  
+  const closeAllSwipes = () => {
+    setSwipeState({ questId: null, offsetX: 0, stage: 'idle', startX: 0, startY: 0, isScrolling: false })
   }
 
-  const handleSwipeMove = (e) => {
-    if (!swipedQuestId) return
-    const currentX = e.touches ? e.touches[0].clientX : e.clientX
-    const diff = startX.current - currentX // Negative = swiping right, Positive = swiping left
+  const handleTouchStart = (e, questId) => {
+    const touch = e.touches[0]
+    setSwipeState(prev => ({
+      ...prev,
+      questId,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      isScrolling: false,
+      stage: 'idle'
+    }))
+  }
+
+  const handleTouchMove = (e) => {
+    if (!swipeState.questId) return
     
-    // Cancel swipe if going right (diff < 0)
-    if (diff < 0) {
-      setSwipedQuestId(null)
+    const touch = e.touches[0]
+    const deltaX = swipeState.startX - touch.clientX
+    const deltaY = touch.clientY - swipeState.startY
+    
+    // Detect scroll vs swipe (if vertical movement > horizontal, treat as scroll)
+    if (!swipeState.isScrolling && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+      setSwipeState(prev => ({ ...prev, isScrolling: true }))
+      return
+    }
+    
+    // Only allow left swipe (positive deltaX)
+    if (deltaX <= 0) {
+      if (swipeState.offsetX > 0) {
+        setSwipeState(prev => ({ ...prev, offsetX: 0, stage: 'idle' }))
+      }
+      return
+    }
+    
+    const newOffset = Math.min(deltaX, 200) // Cap at 200px
+    
+    let stage = 'dragging'
+    if (newOffset >= deepSwipeThreshold) {
+      stage = 'deep'
+    } else if (newOffset >= swipeThreshold) {
+      stage = 'revealed'
+    }
+    
+    setSwipeState(prev => ({
+      ...prev,
+      offsetX: newOffset,
+      stage
+    }))
+  }
+
+  const handleTouchEnd = () => {
+    if (!swipeState.questId) return
+    
+    const { offsetX, stage } = swipeState
+    
+    if (offsetX < swipeThreshold / 2) {
+      // Snap back
+      setSwipeState(prev => ({ ...prev, offsetX: 0, stage: 'idle' }))
+    } else if (stage === 'deep' && offsetX >= deepSwipeThreshold) {
+      // Trigger quick action (mark complete by default)
+      const quest = state.quests.find(q => q.id === swipeState.questId)
+      if (quest && !quest.completed) {
+        completeQuest(swipeState.questId)
+        // Haptic feedback simulation via visual feedback
+      }
+      setSwipeState(prev => ({ ...prev, offsetX: 0, stage: 'idle', questId: null }))
+    } else {
+      // Keep revealed
+      setSwipeState(prev => ({ ...prev, offsetX: swipeThreshold, stage: 'revealed' }))
     }
   }
 
-  const handleSwipeEnd = () => {
-    // Swipe state stays if swiped left
-  }
-
-  const isSwipedLeft = (questId) => {
-    return swipedQuestId === questId
+  const openSwipeActions = (questId) => {
+    setSwipeState(prev => ({ ...prev, questId, offsetX: swipeThreshold, stage: 'revealed' }))
   }
 
   const openEditModal = (quest) => {
@@ -713,7 +779,7 @@ function App() {
       reminder: quest.reminder || false
     })
     setEditModalOpen(true)
-    setSwipedQuestId(null)
+    closeAllSwipes()
   }
 
   const saveEditedQuest = () => {
@@ -748,7 +814,7 @@ function App() {
 
   const confirmDeleteQuest = (quest) => {
     setDeleteConfirmQuest(quest)
-    setSwipedQuestId(null)
+    closeAllSwipes()
   }
 
   const deleteQuest = () => {
@@ -769,18 +835,27 @@ function App() {
       quests: state.quests.map(q => q.id === questId ? { ...q, skipped: true } : q)
     }
     saveData(newState)
-    setSwipedQuestId(null)
+    closeAllSwipes()
     showToast('⏭️', 'Quest skipped')
   }
 
   const pauseQuest = (questId) => {
+    const quest = state.quests.find(q => q.id === questId)
     const newState = {
       ...state,
       quests: state.quests.map(q => q.id === questId ? { ...q, paused: !q.paused } : q)
     }
     saveData(newState)
-    setSwipedQuestId(null)
-    showToast('⏸️', 'Quest paused')
+    closeAllSwipes()
+    showToast(quest?.paused ? '▶️' : '⏸️', quest?.paused ? 'Quest resumed' : 'Quest paused')
+  }
+
+  const completeFromSwipe = (questId) => {
+    const quest = state.quests.find(q => q.id === questId)
+    if (quest && !quest.completed) {
+      completeQuest(questId)
+    }
+    closeAllSwipes()
   }
 
   // ==========================================
@@ -1434,13 +1509,13 @@ Current user context: ${getContext()}` },
             <div className="section-header">
               <h2>Daily Quests</h2>
               <div className="quest-filters">
-                <button className={`filter-btn ${questFilter === 'all' ? 'active' : ''}`} onClick={() => setQuestFilter('all')}>All</button>
-                <button className={`filter-btn ${questFilter === 'daily' ? 'active' : ''}`} onClick={() => setQuestFilter('daily')}>Daily</button>
-                <button className={`filter-btn ${questFilter === 'completed' ? 'active' : ''}`} onClick={() => setQuestFilter('completed')}>Done</button>
+                <button className={`filter-btn ${questFilter === 'all' ? 'active' : ''}`} onClick={() => { setQuestFilter('all'); closeAllSwipes(); }}>All</button>
+                <button className={`filter-btn ${questFilter === 'daily' ? 'active' : ''}`} onClick={() => { setQuestFilter('daily'); closeAllSwipes(); }}>Active</button>
+                <button className={`filter-btn ${questFilter === 'completed' ? 'active' : ''}`} onClick={() => { setQuestFilter('completed'); closeAllSwipes(); }}>Done</button>
               </div>
             </div>
             
-            <div className="quest-list">
+            <div className="quest-list" onClick={() => closeAllSwipes()}>
               {filteredQuests.length === 0 ? (
                 <div className="empty-state">
                   <span className="empty-icon">⚔️</span>
@@ -1448,57 +1523,71 @@ Current user context: ${getContext()}` },
                   <small>Tap + to create your first quest</small>
                 </div>
               ) : (
-                filteredQuests.map(q => (
-                  <div 
-                    key={q.id} 
-                    className={`quest-card ${q.completed ? 'completed' : ''} ${q.paused ? 'paused' : ''} ${isSwipedLeft(q.id) ? 'swiped-left' : ''}`}
-                    onTouchStart={(e) => handleSwipeStart(e, q.id)}
-                    onTouchMove={handleSwipeMove}
-                    onTouchEnd={handleSwipeEnd}
-                    onClick={() => isSwipedLeft(q.id) && setSwipedQuestId(null)}
-                  >
-                    <div className="quest-card-content">
-                      <div className="quest-icon-wrapper">
-                        <span className="quest-icon">{q.icon}</span>
-                        {q.streak > 1 && <span className="streak-badge">🔥{q.streak}</span>}
-                      </div>
-                      <div className="quest-details">
-                        <h4>{q.title}</h4>
-                        <div className="quest-meta">
-                          <span className={`diff-pill diff-${q.difficulty}`}>{q.difficulty}</span>
-                          <span className="stat-tag">{getStatIcon(q.stat)} {getStatName(q.stat)}</span>
-                          {q.recurring && <span className="recurring-tag">🔄 {q.frequency}</span>}
+                filteredQuests.map(q => {
+                  const isSwiped = swipeState.questId === q.id
+                  const offset = isSwiped ? swipeState.offsetX : 0
+                  const isDeep = isSwiped && swipeState.stage === 'deep'
+                  
+                  return (
+                    <div 
+                      key={q.id} 
+                      className={`quest-card ${q.completed ? 'completed' : ''} ${q.paused ? 'paused' : ''} ${isSwiped ? 'swiping' : ''} ${isDeep ? 'deep-swipe' : ''}`}
+                      onTouchStart={(e) => !q.completed && handleTouchStart(e, q.id)}
+                      onTouchMove={(e) => !q.completed && handleTouchMove(e)}
+                      onTouchEnd={(e) => !q.completed && handleTouchEnd(e)}
+                      onClick={(e) => { e.stopPropagation(); if (isSwiped && offset < swipeThreshold / 2) closeAllSwipes(); }}
+                    >
+                      <div className="quest-card-content" style={{ transform: `translateX(${offset}px)` }}>
+                        <div className="quest-icon-wrapper">
+                          <span className="quest-icon">{q.icon}</span>
+                          {q.streak > 1 && <span className="streak-badge">🔥{q.streak}</span>}
                         </div>
+                        <div className="quest-details">
+                          <h4>{q.title}</h4>
+                          <div className="quest-meta">
+                            <span className={`diff-pill diff-${q.difficulty}`}>{q.difficulty}</span>
+                            <span className="stat-tag">{getStatIcon(q.stat)} {getStatName(q.stat)}</span>
+                            {q.recurring && <span className="recurring-tag">🔄</span>}
+                          </div>
+                        </div>
+                        <div className="quest-rewards-mini">
+                          <span className="xp-badge">+{q.xp}</span>
+                        </div>
+                        <button 
+                          className={`check-btn ${q.completed ? 'done' : ''}`} 
+                          onClick={(e) => { e.stopPropagation(); q.completed ? undoQuest(q.id) : completeQuest(q.id); }}
+                        >
+                          {q.completed ? '✓' : '○'}
+                        </button>
                       </div>
-                      <div className="quest-rewards-mini">
-                        <span className="xp-badge">+{q.xp} XP</span>
-                      </div>
-                      <button 
-                        className={`check-btn ${q.completed ? 'done' : ''}`} 
-                        onClick={(e) => { e.stopPropagation(); q.completed ? undoQuest(q.id) : completeQuest(q.id); }}
-                      >
-                        {q.completed ? '✓' : '○'}
-                      </button>
+                      
+                      {isSwiped && (
+                        <div className="swipe-panel" style={{ opacity: Math.min(1, offset / swipeThreshold) }}>
+                          <button 
+                            className={`swipe-action complete ${isDeep ? 'armed' : ''}`} 
+                            onClick={(e) => { e.stopPropagation(); completeFromSwipe(q.id); }}
+                          >
+                            <span>✓</span>
+                            <small>Done</small>
+                          </button>
+                          <button 
+                            className="swipe-action edit" 
+                            onClick={(e) => { e.stopPropagation(); openEditModal(q); }}
+                          >
+                            <span>✏️</span>
+                            <small>Edit</small>
+                          </button>
+                          <button 
+                            className="swipe-action more" 
+                            onClick={(e) => { e.stopPropagation(); setMoreMenuQuest(q); }}
+                          >
+                            <span>•••</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    
-                    {isSwipedLeft(q.id) && (
-                      <div className="swipe-actions-left">
-                        <button className="swipe-btn edit" onClick={() => openEditModal(q)}>
-                          <span>✏️</span>
-                          <small>Edit</small>
-                        </button>
-                        <button className="swipe-btn pause" onClick={() => pauseQuest(q.id)}>
-                          <span>{q.paused ? '▶️' : '⏸️'}</span>
-                          <small>{q.paused ? 'Resume' : 'Pause'}</small>
-                        </button>
-                        <button className="swipe-btn delete" onClick={() => confirmDeleteQuest(q)}>
-                          <span>🗑️</span>
-                          <small>Delete</small>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </div>
@@ -2050,6 +2139,32 @@ Current user context: ${getContext()}` },
             <div className="confirm-actions">
               <button className="btn-secondary" onClick={() => setDeleteConfirmQuest(null)}>Cancel</button>
               <button className="btn-danger" onClick={deleteQuest}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* More Menu Modal */}
+      {moreMenuQuest && (
+        <div className="modal-overlay" onClick={() => setMoreMenuQuest(null)}>
+          <div className="more-menu" onClick={e => e.stopPropagation()}>
+            <div className="more-menu-header">
+              <h4>{moreMenuQuest.title}</h4>
+              <button onClick={() => setMoreMenuQuest(null)}>×</button>
+            </div>
+            <div className="more-menu-actions">
+              <button onClick={() => { pauseQuest(moreMenuQuest.id); setMoreMenuQuest(null); }}>
+                <span>{moreMenuQuest.paused ? '▶️' : '⏸️'}</span>
+                {moreMenuQuest.paused ? 'Resume Quest' : 'Pause Quest'}
+              </button>
+              <button onClick={() => { setEditForm({ ...editForm, recurring: !moreMenuQuest.recurring }); openEditModal(moreMenuQuest); setMoreMenuQuest(null); }}>
+                <span>🔄</span>
+                {moreMenuQuest.recurring ? 'Remove Recurring' : 'Make Recurring'}
+              </button>
+              <button className="danger" onClick={() => { confirmDeleteQuest(moreMenuQuest); setMoreMenuQuest(null); }}>
+                <span>🗑️</span>
+                Delete Quest
+              </button>
             </div>
           </div>
         </div>
