@@ -346,62 +346,75 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUser(user)
-        const hasData = await loadData(user.uid)
+        setLoading(true)
         
-        // Initialize chat for this user
-        const userChats = await getUserChats(user.uid)
-        if (userChats.length > 0) {
-          setCurrentChatId(userChats[0].id)
-          setChatMessages(userChats[0].messages?.length > 0 ? userChats[0].messages : [
-            { role: 'assistant', content: 'Greetings, Hunter. I am your **AI Oracle**, here to guide your journey. Ask me anything about your habits, progress, or how to become stronger.' }
-          ])
-        } else {
-          const chatId = await createChat(user.uid, 'Getting Started')
-          setCurrentChatId(chatId)
-        }
-        
-        if (hasData) {
-          setScreen('home')
-        } else {
-          setScreen('onboarding')
-          setSlide(1)
+        try {
+          const docRef = doc(db, 'users', user.uid)
+          const docSnap = await getDoc(docRef)
+          
+          if (docSnap.exists()) {
+            const cloudData = docSnap.data()
+            setState(cloudData)
+            localStorage.setItem('soloLevelingState', JSON.stringify(cloudData))
+            
+            if (cloudData.initialized) {
+              setScreen('home')
+            } else {
+              setScreen('onboarding')
+              setSlide(1)
+            }
+          } else {
+            const saved = localStorage.getItem('soloLevelingState')
+            if (saved) {
+              const localData = JSON.parse(saved)
+              await setDoc(doc(db, 'users', user.uid), localData)
+              setState(localData)
+              
+              if (localData.initialized) {
+                setScreen('home')
+              } else {
+                setScreen('onboarding')
+                setSlide(1)
+              }
+            } else {
+              setScreen('onboarding')
+              setSlide(1)
+            }
+          }
+          
+          // Load chats
+          await loadUserChats(user.uid)
+          const userChats = await getUserChats(user.uid)
+          if (userChats.length > 0) {
+            setCurrentChatId(userChats[0].id)
+            if (userChats[0].messages?.length > 0) {
+              setChatMessages(userChats[0].messages)
+            }
+          } else {
+            const chatId = await createChat(user.uid, 'Getting Started')
+            setCurrentChatId(chatId)
+          }
+          
+          showToast('✅', 'Welcome, Hunter!')
+        } catch (e) {
+          console.error('Load data error:', e)
+          // Fallback to local
+          const saved = localStorage.getItem('soloLevelingState')
+          if (saved) {
+            setState(JSON.parse(saved))
+            setScreen('home')
+          } else {
+            setScreen('onboarding')
+            setSlide(1)
+          }
         }
       } else {
         setUser(null)
         setScreen('splash')
-        setLoading(false)
         setChats([])
         setCurrentChatId(null)
       }
-    })
-    
-    getRedirectResult(auth).then(async (result) => {
-      if (result?.user) {
-        setUser(result.user)
-        const hasData = await loadData(result.user.uid)
-        
-        // Initialize chat
-        const userChats = await getUserChats(result.user.uid)
-        if (userChats.length > 0) {
-          setCurrentChatId(userChats[0].id)
-          setChatMessages(userChats[0].messages?.length > 0 ? userChats[0].messages : [
-            { role: 'assistant', content: 'Greetings, Hunter. I am your **AI Oracle**, here to guide your journey. Ask me anything about your habits, progress, or how to become stronger.' }
-          ])
-        } else {
-          const chatId = await createChat(result.user.uid, 'Getting Started')
-          setCurrentChatId(chatId)
-        }
-        
-        if (hasData) {
-          setScreen('home')
-        } else {
-          setScreen('onboarding')
-          setSlide(1)
-        }
-        showToast('✅', 'Welcome, Hunter!')
-      }
-    }).catch((e) => {
-      console.error('Redirect result error:', e)
+      setLoading(false)
     })
     
     return () => unsubscribe()
