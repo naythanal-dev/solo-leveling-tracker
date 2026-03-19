@@ -966,7 +966,7 @@ Current user context: ${getContext()}` },
   // RESET FUNCTIONS
   // ==========================================
   const handleFullReset = async () => {
-    if (resetConfirmInput !== 'RESET MY DATA') return
+    if (resetConfirmInput.toUpperCase() !== 'RESET MY DATA') return
     
     try {
       await deleteAllUserData(user.uid)
@@ -1621,7 +1621,7 @@ Current user context: ${getContext()}` },
             />
             <div className="reset-actions">
               <button className="btn-secondary" onClick={() => { setResetModalOpen(false); setResetConfirmInput(''); }}>Cancel</button>
-              <button className="btn-danger" onClick={handleFullReset} disabled={resetConfirmInput !== 'RESET MY DATA'}>
+              <button className="btn-danger" onClick={handleFullReset} disabled={resetConfirmInput.toUpperCase() !== 'RESET MY DATA'}>
                 Reset Everything
               </button>
             </div>
