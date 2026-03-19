@@ -346,17 +346,58 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUser(user)
-        await loadData(user.uid)
+        const hasData = await loadData(user.uid)
+        
+        // Initialize chat for this user
+        const userChats = await getUserChats(user.uid)
+        if (userChats.length > 0) {
+          setCurrentChatId(userChats[0].id)
+          setChatMessages(userChats[0].messages?.length > 0 ? userChats[0].messages : [
+            { role: 'assistant', content: 'Greetings, Hunter. I am your **AI Oracle**, here to guide your journey. Ask me anything about your habits, progress, or how to become stronger.' }
+          ])
+        } else {
+          const chatId = await createChat(user.uid, 'Getting Started')
+          setCurrentChatId(chatId)
+        }
+        
+        if (hasData) {
+          setScreen('home')
+        } else {
+          setScreen('onboarding')
+          setSlide(1)
+        }
       } else {
         setUser(null)
+        setScreen('splash')
         setLoading(false)
+        setChats([])
+        setCurrentChatId(null)
       }
     })
     
     getRedirectResult(auth).then(async (result) => {
       if (result?.user) {
         setUser(result.user)
-        await loadData(result.user.uid)
+        const hasData = await loadData(result.user.uid)
+        
+        // Initialize chat
+        const userChats = await getUserChats(result.user.uid)
+        if (userChats.length > 0) {
+          setCurrentChatId(userChats[0].id)
+          setChatMessages(userChats[0].messages?.length > 0 ? userChats[0].messages : [
+            { role: 'assistant', content: 'Greetings, Hunter. I am your **AI Oracle**, here to guide your journey. Ask me anything about your habits, progress, or how to become stronger.' }
+          ])
+        } else {
+          const chatId = await createChat(result.user.uid, 'Getting Started')
+          setCurrentChatId(chatId)
+        }
+        
+        if (hasData) {
+          setScreen('home')
+        } else {
+          setScreen('onboarding')
+          setSlide(1)
+        }
         showToast('✅', 'Welcome, Hunter!')
       }
     }).catch((e) => {
@@ -383,48 +424,33 @@ function App() {
       if (docSnap.exists()) {
         const cloudData = docSnap.data()
         setState(cloudData)
-        if (cloudData.initialized) {
-          setScreen('home')
-        }
         localStorage.setItem('soloLevelingState', JSON.stringify(cloudData))
+        setLoading(false)
+        return cloudData.initialized
       } else {
         const saved = localStorage.getItem('soloLevelingState')
         if (saved) {
           const localData = JSON.parse(saved)
           await setDoc(doc(db, 'users', uid), localData)
           setState(localData)
-          if (localData.initialized) {
-            setScreen('home')
-          }
+          setLoading(false)
+          return localData.initialized
         }
       }
-      
-      await loadUserChats(uid)
-      
-      if (user && !currentChatId) {
-        const userChats = await getUserChats(uid)
-        if (userChats.length > 0) {
-          setCurrentChatId(userChats[0].id)
-          setChatMessages(userChats[0].messages?.length > 0 ? userChats[0].messages : [
-            { role: 'assistant', content: 'Greetings, Hunter. I am your **AI Oracle**, here to guide your journey. Ask me anything about your habits, progress, or how to become stronger.' }
-          ])
-        } else {
-          const chatId = await createChat(uid, 'Getting Started')
-          await loadUserChats(uid)
-          setCurrentChatId(chatId)
-        }
-      }
+      setLoading(false)
+      return false
     } catch (e) {
       console.error('Error loading data:', e)
       const saved = localStorage.getItem('soloLevelingState')
       if (saved) {
-        setState(JSON.parse(saved))
-        if (JSON.parse(saved).initialized) {
-          setScreen('home')
-        }
+        const localData = JSON.parse(saved)
+        setState(localData)
+        setLoading(false)
+        return localData.initialized
       }
+      setLoading(false)
+      return false
     }
-    setLoading(false)
   }
 
   const saveData = async (newState) => {
