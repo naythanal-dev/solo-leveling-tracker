@@ -70,29 +70,39 @@ const CATEGORIES = [
 
 const QUEST_TEMPLATES = {
   warrior: [
-    { title: 'Morning Workout', stat: 'strength', difficulty: 'normal', category: 'fitness' },
-    { title: 'Stretching', stat: 'vitality', difficulty: 'easy', category: 'fitness' },
-    { title: 'Cardio Session', stat: 'strength', difficulty: 'normal', category: 'fitness' }
+    { title: 'Morning Workout (30 min)', stat: 'strength', difficulty: 'normal', category: 'fitness' },
+    { title: 'Push-ups x 20', stat: 'strength', difficulty: 'easy', category: 'fitness' },
+    { title: 'Stretch for 10 min', stat: 'vitality', difficulty: 'easy', category: 'fitness' },
+    { title: 'Cardio Session', stat: 'strength', difficulty: 'hard', category: 'fitness' },
+    { title: 'Plank Hold 60 sec', stat: 'discipline', difficulty: 'easy', category: 'fitness' }
   ],
   scholar: [
-    { title: 'Study Session', stat: 'intelligence', difficulty: 'normal', category: 'study' },
+    { title: 'Study Session (1 hour)', stat: 'intelligence', difficulty: 'normal', category: 'study' },
     { title: 'Read 20 Pages', stat: 'intelligence', difficulty: 'easy', category: 'study' },
-    { title: 'Practice Problems', stat: 'focus', difficulty: 'normal', category: 'study' }
+    { title: 'Practice Problems', stat: 'focus', difficulty: 'normal', category: 'study' },
+    { title: 'Review Notes', stat: 'intelligence', difficulty: 'easy', category: 'study' },
+    { title: 'Watch Tutorial', stat: 'intelligence', difficulty: 'easy', category: 'study' }
   ],
   assassin: [
-    { title: 'Deep Work Block', stat: 'focus', difficulty: 'hard', category: 'productivity' },
+    { title: 'Deep Work (2 hours)', stat: 'focus', difficulty: 'hard', category: 'productivity' },
     { title: 'Clear Inbox', stat: 'discipline', difficulty: 'easy', category: 'productivity' },
-    { title: 'No Phone 1 Hour', stat: 'willpower', difficulty: 'normal', category: 'discipline' }
+    { title: 'No Phone 1 Hour', stat: 'willpower', difficulty: 'normal', category: 'discipline' },
+    { title: 'Complete Priority Task', stat: 'focus', difficulty: 'normal', category: 'productivity' },
+    { title: 'Plan Tomorrow', stat: 'discipline', difficulty: 'easy', category: 'productivity' }
   ],
   guardian: [
     { title: 'Healthy Meal', stat: 'vitality', difficulty: 'easy', category: 'health' },
     { title: 'Sleep by 11 PM', stat: 'vitality', difficulty: 'normal', category: 'health' },
-    { title: 'Drink 2L Water', stat: 'discipline', difficulty: 'easy', category: 'health' }
+    { title: 'Drink 2L Water', stat: 'vitality', difficulty: 'easy', category: 'health' },
+    { title: 'Walk 30 min', stat: 'vitality', difficulty: 'easy', category: 'health' },
+    { title: 'No Junk Food', stat: 'willpower', difficulty: 'normal', category: 'health' }
   ],
   monarch: [
     { title: 'Morning Routine', stat: 'discipline', difficulty: 'normal', category: 'discipline' },
     { title: 'Learn Something New', stat: 'intelligence', difficulty: 'easy', category: 'study' },
-    { title: 'Evening Reflection', stat: 'focus', difficulty: 'easy', category: 'mindset' }
+    { title: 'Meditate 10 min', stat: 'willpower', difficulty: 'easy', category: 'mindset' },
+    { title: 'Evening Reflection', stat: 'focus', difficulty: 'easy', category: 'mindset' },
+    { title: 'Connect with Someone', stat: 'charisma', difficulty: 'easy', category: 'social' }
   ]
 }
 
@@ -421,6 +431,9 @@ function App() {
     if (newState.totalQuests >= 50 && !newAchievements.includes('quest_50')) newAchievements.push('quest_50')
     if (newState.level >= 5 && !newAchievements.includes('level_5')) newAchievements.push('level_5')
     if (newState.level >= 10 && !newAchievements.includes('level_10')) newAchievements.push('level_10')
+    if (newState.streak >= 3 && !newAchievements.includes('streak_3')) newAchievements.push('streak_3')
+    if (newState.streak >= 7 && !newAchievements.includes('streak_7')) newAchievements.push('streak_7')
+    if (newRank.name !== 'Trainee' && !newAchievements.includes('rank_d')) newAchievements.push('rank_d')
     newState.achievements = newAchievements
 
     saveData(newState)
@@ -431,12 +444,24 @@ function App() {
     const quest = state.quests.find(q => q.id === questId)
     if (!quest || !quest.completed) return
 
+    let newCurrentXP = state.currentXP - quest.xp
+    let newLevel = state.level
+    
+    if (newCurrentXP < 0 && newLevel > 1) {
+      newLevel--
+      const prevRequiredXP = getRequiredXP(newLevel)
+      newCurrentXP = prevRequiredXP + newCurrentXP
+    } else if (newCurrentXP < 0) {
+      newCurrentXP = 0
+    }
+
     const newState = {
       ...state,
       quests: state.quests.map(q => q.id === questId ? { ...q, completed: false, streak: Math.max(0, (q.streak || 0) - 1) } : q),
       totalQuests: Math.max(0, state.totalQuests - 1),
-      currentXP: Math.max(0, state.currentXP - quest.xp),
+      currentXP: Math.max(0, newCurrentXP),
       totalXP: Math.max(0, state.totalXP - quest.xp),
+      level: newLevel,
       coins: Math.max(0, state.coins - quest.coins),
       stats: { ...state.stats, [quest.stat]: Math.max(0, (state.stats[quest.stat] || 0) - quest.statValue) }
     }
@@ -806,14 +831,23 @@ Current user context: ${context}` },
             </div>
           )}
 
-          <div className="stats-row">
-            {Object.entries(state.stats).slice(0, 4).map(([s, v]) => (
-              <div key={s} className="stat">
-                <span>{getStatIcon(s)}</span>
-                <strong>{v}</strong>
-                <small>{getStatName(s)}</small>
-              </div>
-            ))}
+          <div className="stats-panel">
+            <div className="stats-panel-header">
+              <span>HUNTER STATS</span>
+              <span className="stats-level">LV.{state.level}</span>
+            </div>
+            <div className="stats-grid-full">
+              {Object.entries(state.stats).map(([s, v]) => (
+                <div key={s} className={`stat-item ${s === weakestStat?.[0] && v < 20 ? 'weak' : ''}`}>
+                  <span className="stat-icon">{getStatIcon(s)}</span>
+                  <span className="stat-label">{getStatName(s)}</span>
+                  <span className="stat-value">{v}</span>
+                  <div className="stat-bar">
+                    <div className="stat-bar-fill" style={{ width: `${Math.min(100, v)}%` }}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="section">
