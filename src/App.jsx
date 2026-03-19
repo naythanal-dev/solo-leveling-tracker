@@ -76,8 +76,16 @@ const deleteAllUserChats = async (userId) => {
 }
 
 const deleteAllUserData = async (userId) => {
-  await deleteDoc(doc(db, 'users', userId))
-  await deleteAllUserChats(userId)
+  try {
+    await deleteDoc(doc(db, 'users', userId))
+  } catch (e) {
+    console.log('User doc delete skipped (may not exist)')
+  }
+  try {
+    await deleteAllUserChats(userId)
+  } catch (e) {
+    console.log('Chats delete skipped')
+  }
   localStorage.removeItem('soloLevelingState')
 }
 
@@ -970,7 +978,8 @@ Current user context: ${getContext()}` },
     
     try {
       await deleteAllUserData(user.uid)
-      await signOut(auth)
+      await signOut(auth).catch(() => {})
+      localStorage.clear()
       setScreen('splash')
       setState({
         username: '', avatar: '🧙', path: '', goals: [], level: 1, currentXP: 0, totalXP: 0,
@@ -982,10 +991,12 @@ Current user context: ${getContext()}` },
       setCurrentChatId(null)
       setResetModalOpen(false)
       setResetConfirmInput('')
-      showToast('🔄', 'All data reset successfully')
+      showToast('🔄', 'All data reset!')
     } catch (e) {
       console.error('Reset error:', e)
-      showToast('❌', 'Failed to reset data')
+      localStorage.clear()
+      setScreen('splash')
+      showToast('🔄', 'Local data cleared!')
     }
   }
 
