@@ -306,6 +306,29 @@ function App() {
   const [resetModalOpen, setResetModalOpen] = useState(false)
   const [resetConfirmInput, setResetConfirmInput] = useState('')
   
+  // Edit quest modal
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [editingQuest, setEditingQuest] = useState(null)
+  const [editForm, setEditForm] = useState({
+    title: '', stat: 'discipline', category: 'productivity', difficulty: 'normal',
+    frequency: 'daily', recurring: false, reminder: false
+  })
+  
+  // Delete confirmation
+  const [deleteConfirmQuest, setDeleteConfirmQuest] = useState(null)
+  
+  // Chat search
+  const [chatSearchQuery, setChatSearchQuery] = useState('')
+  const [filteredChats, setFilteredChats] = useState([])
+  
+  // Quest filters
+  const [questFilter, setQuestFilter] = useState('all') // all, daily, weekly, completed
+  
+  // Swipe state
+  const [swipedQuestId, setSwipedQuestId] = useState(null)
+  const swipeRef = useRef(null)
+  const startX = useRef(0)
+  
   // Add Quest Modal States
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [addMode, setAddMode] = useState('quick') // quick, guided, ai
@@ -424,6 +447,23 @@ function App() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
+
+  // Filter chats based on search
+  useEffect(() => {
+    if (chatSearchQuery.trim() === '') {
+      setFilteredChats(chats)
+    } else {
+      const query = chatSearchQuery.toLowerCase()
+      const filtered = chats.filter(chat => {
+        const titleMatch = chat.title?.toLowerCase().includes(query)
+        const msgMatch = chat.messages?.some(m => 
+          m.content?.toLowerCase().includes(query)
+        )
+        return titleMatch || msgMatch
+      })
+      setFilteredChats(filtered)
+    }
+  }, [chatSearchQuery, chats])
 
   // ==========================================
   // DATA FUNCTIONS
@@ -632,6 +672,109 @@ function App() {
     }
     saveData(newState)
     showToast('↩️', 'Quest undone')
+  }
+
+  // ==========================================
+  // SWIPE & QUEST ACTIONS
+  // ==========================================
+  const handleSwipeStart = (e, questId) => {
+    startX.current = e.touches ? e.touches[0].clientX : e.clientX
+    setSwipedQuestId(questId)
+  }
+
+  const handleSwipeMove = (e) => {
+    if (!swipedQuestId) return
+    const currentX = e.touches ? e.touches[0].clientX : e.clientX
+    const diff = currentX - startX.current
+    if (diff > 100) {
+      setSwipedQuestId(null)
+    }
+  }
+
+  const handleSwipeEnd = () => {
+    // Keep swiped state for button visibility
+  }
+
+  const openEditModal = (quest) => {
+    setEditingQuest(quest)
+    setEditForm({
+      title: quest.title,
+      stat: quest.stat,
+      category: quest.category,
+      difficulty: quest.difficulty,
+      frequency: quest.frequency || 'daily',
+      recurring: quest.recurring || false,
+      reminder: quest.reminder || false
+    })
+    setEditModalOpen(true)
+    setSwipedQuestId(null)
+  }
+
+  const saveEditedQuest = () => {
+    if (!editingQuest || !editForm.title.trim()) return
+    
+    const newQuests = state.quests.map(q => {
+      if (q.id === editingQuest.id) {
+        return {
+          ...q,
+          title: editForm.title,
+          stat: editForm.stat,
+          category: editForm.category,
+          difficulty: editForm.difficulty,
+          frequency: editForm.frequency,
+          recurring: editForm.recurring,
+          reminder: editForm.reminder,
+          xp: DIFFICULTY_XP[editForm.difficulty],
+          coins: DIFFICULTY_COINS[editForm.difficulty],
+          statValue: Math.ceil(DIFFICULTY_XP[editForm.difficulty] / 5),
+          icon: getStatIcon(editForm.stat)
+        }
+      }
+      return q
+    })
+    
+    const newState = { ...state, quests: newQuests }
+    saveData(newState)
+    setEditModalOpen(false)
+    setEditingQuest(null)
+    showToast('✏️', 'Quest updated!')
+  }
+
+  const confirmDeleteQuest = (quest) => {
+    setDeleteConfirmQuest(quest)
+    setSwipedQuestId(null)
+  }
+
+  const deleteQuest = () => {
+    if (!deleteConfirmQuest) return
+    
+    const newState = {
+      ...state,
+      quests: state.quests.filter(q => q.id !== deleteConfirmQuest.id)
+    }
+    saveData(newState)
+    setDeleteConfirmQuest(null)
+    showToast('🗑️', 'Quest deleted')
+  }
+
+  const skipQuest = (questId) => {
+    const newState = {
+      ...state,
+      quests: state.quests.map(q => q.id === questId ? { ...q, skipped: true } : q)
+    }
+    saveData(newState)
+    setSwipedQuestId(null)
+    showToast('⏭️', 'Quest skipped')
+  }
+
+  const pauseQuest = (questId) => {
+    const newState = {
+      ...state,
+      quests: state.quests.map(q => q.id === questId ? { ...q, paused: !q.paused } : q)
+    }
+    saveData(newState)
+    setSwipedQuestId(null)
+    showToast('⏸️', 'Quest paused')
   }
 
   // ==========================================
@@ -1091,6 +1234,13 @@ Current user context: ${getContext()}` },
   // Find weakest stat
   const weakestStat = Object.entries(state.stats).sort((a, b) => a[1] - b[1])[0]
 
+  // Filter quests based on selected filter
+  const filteredQuests = state.quests.filter(q => {
+    if (questFilter === 'daily') return !q.completed && (q.frequency === 'daily' || !q.frequency)
+    if (questFilter === 'completed') return q.completed
+    return true
+  })
+
   if (loading) {
     return (
       <div className="loading">
@@ -1275,28 +1425,69 @@ Current user context: ${getContext()}` },
           </div>
 
           <div className="section">
-            <h2>Daily Quests</h2>
+            <div className="section-header">
+              <h2>Daily Quests</h2>
+              <div className="quest-filters">
+                <button className={`filter-btn ${questFilter === 'all' ? 'active' : ''}`} onClick={() => setQuestFilter('all')}>All</button>
+                <button className={`filter-btn ${questFilter === 'daily' ? 'active' : ''}`} onClick={() => setQuestFilter('daily')}>Daily</button>
+                <button className={`filter-btn ${questFilter === 'completed' ? 'active' : ''}`} onClick={() => setQuestFilter('completed')}>Done</button>
+              </div>
+            </div>
+            
             <div className="quest-list">
-              {state.quests.length === 0 ? (
-                <p className="empty">No quests yet. Tap + to create one!</p>
+              {filteredQuests.length === 0 ? (
+                <div className="empty-state">
+                  <span className="empty-icon">⚔️</span>
+                  <p>{questFilter === 'completed' ? 'No completed quests yet' : 'No quests yet'}</p>
+                  <small>Tap + to create your first quest</small>
+                </div>
               ) : (
-                state.quests.map(q => (
-                  <div key={q.id} className={`quest ${q.completed ? 'done' : ''}`}>
-                    <span className="quest-icon">{q.icon}</span>
-                    <div className="quest-info">
-                      <strong>{q.title}</strong>
-                      <small>
-                        <span className={`diff diff-${q.difficulty}`}>{DIFFICULTY_LABEL[q.difficulty]}</span>
-                        {getStatName(q.stat)} +{q.statValue}
-                      </small>
+                filteredQuests.map(q => (
+                  <div 
+                    key={q.id} 
+                    className={`quest-card ${q.completed ? 'completed' : ''} ${q.paused ? 'paused' : ''} ${swipedQuestId === q.id ? 'swiped' : ''}`}
+                    onTouchStart={(e) => handleSwipeStart(e, q.id)}
+                    onTouchMove={handleSwipeMove}
+                    onTouchEnd={handleSwipeEnd}
+                    onClick={() => swipedQuestId === q.id && setSwipedQuestId(null)}
+                  >
+                    <div className="quest-card-content">
+                      <div className="quest-icon-wrapper">
+                        <span className="quest-icon">{q.icon}</span>
+                        {q.streak > 1 && <span className="streak-badge">🔥{q.streak}</span>}
+                      </div>
+                      <div className="quest-details">
+                        <h4>{q.title}</h4>
+                        <div className="quest-meta">
+                          <span className={`diff-pill diff-${q.difficulty}`}>{q.difficulty}</span>
+                          <span className="stat-tag">{getStatIcon(q.stat)} {getStatName(q.stat)}</span>
+                          {q.recurring && <span className="recurring-tag">🔄 {q.frequency}</span>}
+                        </div>
+                      </div>
+                      <div className="quest-rewards-mini">
+                        <span className="xp-badge">+{q.xp} XP</span>
+                      </div>
+                      <button 
+                        className={`check-btn ${q.completed ? 'done' : ''}`} 
+                        onClick={(e) => { e.stopPropagation(); q.completed ? undoQuest(q.id) : completeQuest(q.id); }}
+                      >
+                        {q.completed ? '✓' : '○'}
+                      </button>
                     </div>
-                    <div className="quest-rewards">
-                      <span className="xp">+{q.xp}</span>
-                      <span className="coins">+{q.coins} 🪙</span>
-                    </div>
-                    <button className={`check ${q.completed ? 'done' : ''}`} onClick={() => q.completed ? undoQuest(q.id) : completeQuest(q.id)}>
-                      {q.completed ? '↩️' : '○'}
-                    </button>
+                    
+                    {swipedQuestId === q.id && (
+                      <div className="swipe-actions">
+                        <button className="swipe-btn edit" onClick={() => openEditModal(q)}>
+                          <span>✏️</span> Edit
+                        </button>
+                        <button className="swipe-btn pause" onClick={() => pauseQuest(q.id)}>
+                          <span>{q.paused ? '▶️' : '⏸️'}</span> {q.paused ? 'Resume' : 'Pause'}
+                        </button>
+                        <button className="swipe-btn delete" onClick={() => confirmDeleteQuest(q)}>
+                          <span>🗑️</span> Delete
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -1568,19 +1759,46 @@ Current user context: ${getContext()}` },
               <h3>Chat History</h3>
               <button onClick={() => setChatListOpen(false)}>×</button>
             </div>
+            
+            <div className="chat-search">
+              <input
+                type="text"
+                placeholder="Search chats..."
+                value={chatSearchQuery}
+                onChange={e => setChatSearchQuery(e.target.value)}
+              />
+              {chatSearchQuery && (
+                <button className="clear-search" onClick={() => setChatSearchQuery('')}>×</button>
+              )}
+            </div>
+            
             <button className="new-chat-btn" onClick={startNewChat}>
               <span>✏️</span> New Chat
             </button>
+            
+            <div className="chat-suggestions">
+              <span>Quick topics:</span>
+              <button onClick={() => { setChatSearchQuery('focus'); setChatListOpen(false); setChatOpen(true); }}>Focus</button>
+              <button onClick={() => { setChatSearchQuery('habits'); setChatListOpen(false); setChatOpen(true); }}>Habits</button>
+              <button onClick={() => { setChatSearchQuery('routine'); setChatListOpen(false); setChatOpen(true); }}>Routine</button>
+            </div>
+            
             <div className="chat-list">
-              {chats.map(chat => (
-                <div key={chat.id} className={`chat-list-item ${chat.id === currentChatId ? 'active' : ''}`} onClick={() => switchToChat(chat.id)}>
-                  <div className="chat-list-info">
-                    <strong>{chat.title || 'New Chat'}</strong>
-                    <small>{chat.updatedAt ? new Date(chat.updatedAt).toLocaleDateString() : ''}</small>
-                  </div>
-                  <button className="chat-delete-btn" onClick={(e) => { e.stopPropagation(); deleteChatById(chat.id); }}>🗑️</button>
+              {filteredChats.length === 0 ? (
+                <div className="no-chats">
+                  <p>{chatSearchQuery ? 'No chats found' : 'No chats yet'}</p>
                 </div>
-              ))}
+              ) : (
+                filteredChats.map(chat => (
+                  <div key={chat.id} className={`chat-list-item ${chat.id === currentChatId ? 'active' : ''}`} onClick={() => switchToChat(chat.id)}>
+                    <div className="chat-list-info">
+                      <strong>{chat.title || 'New Chat'}</strong>
+                      <small>{chat.messages?.length || 0} messages • {chat.updatedAt ? new Date(chat.updatedAt).toLocaleDateString() : ''}</small>
+                    </div>
+                    <button className="chat-delete-btn" onClick={(e) => { e.stopPropagation(); deleteChatById(chat.id); }}>🗑️</button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -1711,6 +1929,118 @@ Current user context: ${getContext()}` },
               <button className="btn-danger" onClick={handleFullReset} disabled={resetConfirmInput.toUpperCase() !== 'RESET MY DATA'}>
                 Reset Everything
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Quest Modal */}
+      {editModalOpen && editingQuest && (
+        <div className="modal-overlay" onClick={() => setEditModalOpen(false)}>
+          <div className="edit-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Edit Quest</h2>
+              <button onClick={() => setEditModalOpen(false)}>×</button>
+            </div>
+            <div className="edit-modal-content">
+              <div className="edit-field">
+                <label>Title</label>
+                <input
+                  type="text"
+                  value={editForm.title}
+                  onChange={e => setEditForm({ ...editForm, title: e.target.value })}
+                  placeholder="Quest title..."
+                />
+              </div>
+              
+              <div className="edit-field">
+                <label>Category</label>
+                <div className="category-chips">
+                  {CATEGORIES.map(cat => (
+                    <button
+                      key={cat.id}
+                      className={`chip ${editForm.category === cat.id ? 'active' : ''}`}
+                      onClick={() => setEditForm({ ...editForm, category: cat.id, stat: cat.stat })}
+                    >
+                      {cat.icon} {cat.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="edit-field">
+                <label>Difficulty</label>
+                <div className="diff-chips">
+                  {['easy', 'normal', 'hard'].map(d => (
+                    <button
+                      key={d}
+                      className={`chip ${editForm.difficulty === d ? 'active' : ''}`}
+                      onClick={() => setEditForm({ ...editForm, difficulty: d })}
+                    >
+                      <span className={`diff-badge diff-${d}`}>{d[0].toUpperCase()}</span>
+                      {DIFFICULTY_XP[d]} XP
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="edit-field">
+                <label>Frequency</label>
+                <div className="freq-chips">
+                  {['daily', 'weekly', 'monthly'].map(f => (
+                    <button
+                      key={f}
+                      className={`chip ${editForm.frequency === f ? 'active' : ''}`}
+                      onClick={() => setEditForm({ ...editForm, frequency: f })}
+                    >
+                      {f.charAt(0).toUpperCase() + f.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="edit-field">
+                <label className="toggle-label">
+                  <span>Recurring</span>
+                  <button
+                    className={`toggle ${editForm.recurring ? 'on' : ''}`}
+                    onClick={() => setEditForm({ ...editForm, recurring: !editForm.recurring })}
+                  >
+                    <span className="toggle-knob"></span>
+                  </button>
+                </label>
+              </div>
+              
+              <div className="edit-preview">
+                <span>Preview:</span>
+                <div className="preview-card">
+                  <span className="preview-icon">{getStatIcon(editForm.stat)}</span>
+                  <div>
+                    <strong>{editForm.title || 'Quest Title'}</strong>
+                    <small>+{DIFFICULTY_XP[editForm.difficulty]} XP • {getStatName(editForm.stat)}</small>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="edit-modal-actions">
+              <button className="btn-secondary" onClick={() => setEditModalOpen(false)}>Cancel</button>
+              <button className="btn-primary" onClick={saveEditedQuest} disabled={!editForm.title.trim()}>Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmQuest && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirmQuest(null)}>
+          <div className="confirm-modal" onClick={e => e.stopPropagation()}>
+            <div className="confirm-icon">🗑️</div>
+            <h2>Delete Quest?</h2>
+            <p>Are you sure you want to delete "{deleteConfirmQuest.title}"?</p>
+            <p className="confirm-warning">This cannot be undone.</p>
+            <div className="confirm-actions">
+              <button className="btn-secondary" onClick={() => setDeleteConfirmQuest(null)}>Cancel</button>
+              <button className="btn-danger" onClick={deleteQuest}>Delete</button>
             </div>
           </div>
         </div>
