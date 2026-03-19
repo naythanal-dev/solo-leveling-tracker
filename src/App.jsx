@@ -146,17 +146,36 @@ function App() {
   // DATA FUNCTIONS
   // ==========================================
   const loadData = async (uid) => {
+    setLoading(true)
     try {
       const docRef = doc(db, 'users', uid)
       const docSnap = await getDoc(docRef)
+      
       if (docSnap.exists()) {
-        setState(docSnap.data())
-        if (docSnap.data().initialized) {
+        // Found data in Firestore - use it
+        const cloudData = docSnap.data()
+        setState(cloudData)
+        if (cloudData.initialized) {
           setScreen('home')
+        }
+        // Also save to localStorage as backup
+        localStorage.setItem('soloLevelingState', JSON.stringify(cloudData))
+      } else {
+        // No data in Firestore - check localStorage
+        const saved = localStorage.getItem('soloLevelingState')
+        if (saved) {
+          const localData = JSON.parse(saved)
+          // Push local data to Firestore for syncing
+          await setDoc(doc(db, 'users', uid), localData)
+          setState(localData)
+          if (localData.initialized) {
+            setScreen('home')
+          }
         }
       }
     } catch (e) {
-      console.log('Using local storage')
+      console.error('Error loading data:', e)
+      // Fallback to localStorage
       const saved = localStorage.getItem('soloLevelingState')
       if (saved) {
         setState(JSON.parse(saved))
@@ -170,14 +189,19 @@ function App() {
 
   const saveData = async (newState) => {
     setState(newState)
+    
+    // Always save to localStorage first
+    localStorage.setItem('soloLevelingState', JSON.stringify(newState))
+    
+    // Then try to save to Firestore
     if (user) {
       try {
         await setDoc(doc(db, 'users', user.uid), newState, { merge: true })
+        console.log('Saved to Firestore successfully')
       } catch (e) {
-        console.log('Firebase save failed, using local storage')
+        console.error('Firebase save failed:', e)
       }
     }
-    localStorage.setItem('soloLevelingState', JSON.stringify(newState))
   }
 
   // ==========================================
