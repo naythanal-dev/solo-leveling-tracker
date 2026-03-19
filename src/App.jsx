@@ -58,32 +58,149 @@ const ACHIEVEMENTS = [
   { id: 'rank_d', icon: '🏅', title: 'Ranked Up', desc: 'Reach D-Rank' }
 ]
 
+const CATEGORIES = [
+  { id: 'fitness', icon: '💪', name: 'Fitness', stat: 'strength' },
+  { id: 'study', icon: '📚', name: 'Study', stat: 'intelligence' },
+  { id: 'productivity', icon: '⚡', name: 'Productivity', stat: 'focus' },
+  { id: 'health', icon: '❤️', name: 'Health', stat: 'vitality' },
+  { id: 'discipline', icon: '🎯', name: 'Discipline', stat: 'discipline' },
+  { id: 'mindset', icon: '🧠', name: 'Mindset', stat: 'willpower' },
+  { id: 'social', icon: '💬', name: 'Social', stat: 'charisma' }
+]
+
 const QUEST_TEMPLATES = {
   warrior: [
-    { title: 'Morning Workout', stat: 'strength', difficulty: 'normal' },
-    { title: 'Stretching', stat: 'vitality', difficulty: 'easy' },
-    { title: 'Cardio Session', stat: 'strength', difficulty: 'normal' }
+    { title: 'Morning Workout', stat: 'strength', difficulty: 'normal', category: 'fitness' },
+    { title: 'Stretching', stat: 'vitality', difficulty: 'easy', category: 'fitness' },
+    { title: 'Cardio Session', stat: 'strength', difficulty: 'normal', category: 'fitness' }
   ],
   scholar: [
-    { title: 'Study Session', stat: 'intelligence', difficulty: 'normal' },
-    { title: 'Read 20 Pages', stat: 'intelligence', difficulty: 'easy' },
-    { title: 'Practice Problems', stat: 'focus', difficulty: 'normal' }
+    { title: 'Study Session', stat: 'intelligence', difficulty: 'normal', category: 'study' },
+    { title: 'Read 20 Pages', stat: 'intelligence', difficulty: 'easy', category: 'study' },
+    { title: 'Practice Problems', stat: 'focus', difficulty: 'normal', category: 'study' }
   ],
   assassin: [
-    { title: 'Deep Work Block', stat: 'focus', difficulty: 'hard' },
-    { title: 'Clear Inbox', stat: 'discipline', difficulty: 'easy' },
-    { title: 'No Phone 1 Hour', stat: 'willpower', difficulty: 'normal' }
+    { title: 'Deep Work Block', stat: 'focus', difficulty: 'hard', category: 'productivity' },
+    { title: 'Clear Inbox', stat: 'discipline', difficulty: 'easy', category: 'productivity' },
+    { title: 'No Phone 1 Hour', stat: 'willpower', difficulty: 'normal', category: 'discipline' }
   ],
   guardian: [
-    { title: 'Healthy Meal', stat: 'vitality', difficulty: 'easy' },
-    { title: 'Sleep by 11 PM', stat: 'vitality', difficulty: 'normal' },
-    { title: 'Drink 2L Water', stat: 'discipline', difficulty: 'easy' }
+    { title: 'Healthy Meal', stat: 'vitality', difficulty: 'easy', category: 'health' },
+    { title: 'Sleep by 11 PM', stat: 'vitality', difficulty: 'normal', category: 'health' },
+    { title: 'Drink 2L Water', stat: 'discipline', difficulty: 'easy', category: 'health' }
   ],
   monarch: [
-    { title: 'Morning Routine', stat: 'discipline', difficulty: 'normal' },
-    { title: 'Learn Something New', stat: 'intelligence', difficulty: 'easy' },
-    { title: 'Evening Reflection', stat: 'focus', difficulty: 'easy' }
+    { title: 'Morning Routine', stat: 'discipline', difficulty: 'normal', category: 'discipline' },
+    { title: 'Learn Something New', stat: 'intelligence', difficulty: 'easy', category: 'study' },
+    { title: 'Evening Reflection', stat: 'focus', difficulty: 'easy', category: 'mindset' }
   ]
+}
+
+// ==========================================
+// MARKDOWN PARSER
+// ==========================================
+function parseMarkdown(text) {
+  if (!text) return ''
+  
+  let html = text
+    // Bold: **text** or *text*
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
+    // Italic: _text_
+    .replace(/_(.*?)_/g, '<em>$1</em>')
+    // Code: `text`
+    .replace(/`(.*?)`/g, '<code>$1</code>')
+    // Line breaks
+    .replace(/\n/g, '<br/>')
+    // Lists
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+  
+  // Wrap consecutive li elements in ul
+  html = html.replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>')
+  
+  return html
+}
+
+// ==========================================
+// NATURAL LANGUAGE PARSER
+// ==========================================
+function parseNaturalLanguage(input) {
+  const text = input.toLowerCase().trim()
+  
+  let result = {
+    title: input,
+    stat: 'discipline',
+    difficulty: 'normal',
+    category: 'productivity',
+    frequency: 'daily',
+    target: '',
+    xp: 20,
+    coins: 10
+  }
+  
+  // Detect category and stat
+  if (text.match(/\b(read|study|book|course|learn|lecture|notes|tutorial)\b/)) {
+    result.stat = 'intelligence'
+    result.category = 'study'
+  }
+  if (text.match(/\b(gym|workout|exercise|running|run|jog|pushup|squat|fit|muscle|cardio|stretch)\b/)) {
+    result.stat = 'strength'
+    result.category = 'fitness'
+  }
+  if (text.match(/\b(sleep|water|healthy|meal|veg|fruit|vitamin|walk|rest|recover|energy)\b/)) {
+    result.stat = 'vitality'
+    result.category = 'health'
+  }
+  if (text.match(/\b(focus|deep work|productive|task|block|inbox|complete|finish)\b/)) {
+    result.stat = 'focus'
+    result.category = 'productivity'
+  }
+  if (text.match(/\b(meditat|calm|breathe|peace|relax|mindful)\b/)) {
+    result.stat = 'willpower'
+    result.category = 'mindset'
+  }
+  if (text.match(/\b(no |don't|don't|avoid|stop|quit|refrain)\b/)) {
+    result.stat = 'willpower'
+    result.category = 'discipline'
+    result.title = input.replace(/^(no |don't |don't |avoid |stop )/i, '')
+  }
+  
+  // Detect difficulty from keywords
+  if (text.match(/\b(hard|tough|intense|extreme|challenging|1 hour|2 hour|30 min|60 min)\b/)) {
+    result.difficulty = 'hard'
+    result.xp = 35
+    result.coins = 18
+  }
+  if (text.match(/\b(easy|quick|simple|5 min|10 min|short)\b/)) {
+    result.difficulty = 'easy'
+    result.xp = 10
+    result.coins = 5
+  }
+  if (text.match(/\b(elite|master|pro|advanced|expert)\b/)) {
+    result.difficulty = 'elite'
+    result.xp = 60
+    result.coins = 30
+  }
+  
+  // Detect frequency
+  if (text.match(/\b(daily|every day|each day|everyday)\b/)) {
+    result.frequency = 'daily'
+  }
+  if (text.match(/\b(weekly|every week|once a week|3 times|5 times)\b/)) {
+    result.frequency = 'weekly'
+  }
+  if (text.match(/\b(monthly|every month|once a month)\b/)) {
+    result.frequency = 'monthly'
+  }
+  
+  // Extract numbers
+  const numberMatch = input.match(/\d+/)
+  if (numberMatch) {
+    result.target = numberMatch[0]
+  }
+  
+  return result
 }
 
 // ==========================================
@@ -97,11 +214,26 @@ function App() {
   const [toast, setToast] = useState(null)
   const [chatOpen, setChatOpen] = useState(false)
   const [chatMessages, setChatMessages] = useState([
-    { role: 'assistant', content: 'Greetings, Hunter. I am your AI Oracle, here to guide your journey. Ask me anything.' }
+    { role: 'assistant', content: 'Greetings, Hunter. I am your **AI Oracle**, here to guide your journey. Ask me anything about your habits, progress, or how to become stronger.' }
   ])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const chatEndRef = useRef(null)
+  
+  // Add Quest Modal States
+  const [addModalOpen, setAddModalOpen] = useState(false)
+  const [addMode, setAddMode] = useState('quick') // quick, guided, ai
+  const [quickInput, setQuickInput] = useState('')
+  const [guidedStep, setGuidedStep] = useState(1)
+  const [guidedData, setGuidedData] = useState({
+    category: '',
+    type: 'build',
+    frequency: 'daily',
+    target: '',
+    difficulty: 'normal'
+  })
+  const [aiSuggestions, setAiSuggestions] = useState([])
+  const [aiLoading, setAiLoading] = useState(false)
   
   const [state, setState] = useState({
     username: '',
@@ -152,20 +284,16 @@ function App() {
       const docSnap = await getDoc(docRef)
       
       if (docSnap.exists()) {
-        // Found data in Firestore - use it
         const cloudData = docSnap.data()
         setState(cloudData)
         if (cloudData.initialized) {
           setScreen('home')
         }
-        // Also save to localStorage as backup
         localStorage.setItem('soloLevelingState', JSON.stringify(cloudData))
       } else {
-        // No data in Firestore - check localStorage
         const saved = localStorage.getItem('soloLevelingState')
         if (saved) {
           const localData = JSON.parse(saved)
-          // Push local data to Firestore for syncing
           await setDoc(doc(db, 'users', uid), localData)
           setState(localData)
           if (localData.initialized) {
@@ -175,7 +303,6 @@ function App() {
       }
     } catch (e) {
       console.error('Error loading data:', e)
-      // Fallback to localStorage
       const saved = localStorage.getItem('soloLevelingState')
       if (saved) {
         setState(JSON.parse(saved))
@@ -189,15 +316,11 @@ function App() {
 
   const saveData = async (newState) => {
     setState(newState)
-    
-    // Always save to localStorage first
     localStorage.setItem('soloLevelingState', JSON.stringify(newState))
     
-    // Then try to save to Firestore
     if (user) {
       try {
         await setDoc(doc(db, 'users', user.uid), newState, { merge: true })
-        console.log('Saved to Firestore successfully')
       } catch (e) {
         console.error('Firebase save failed:', e)
       }
@@ -213,15 +336,7 @@ function App() {
       showToast('✅', 'Welcome, Hunter!')
     } catch (e) {
       console.error('Sign in error:', e)
-      let errorMessage = 'Sign in failed'
-      if (e.code === 'auth/operation-not-allowed') {
-        errorMessage = 'Google sign-in not enabled in Firebase'
-      } else if (e.code === 'auth/unauthorized-domain') {
-        errorMessage = 'Domain not authorized - check Firebase settings'
-      } else if (e.code === 'auth/popup-blocked') {
-        errorMessage = 'Popup blocked - allow popups for this site'
-      }
-      showToast('❌', errorMessage)
+      showToast('❌', 'Sign in failed: ' + e.message)
     }
   }
 
@@ -249,6 +364,7 @@ function App() {
       id: `quest_${i}_${Date.now()}`,
       title: t.title,
       stat: t.stat,
+      category: t.category,
       difficulty: t.difficulty,
       xp: DIFFICULTY_XP[t.difficulty],
       coins: DIFFICULTY_COINS[t.difficulty],
@@ -285,7 +401,6 @@ function App() {
       stats: { ...state.stats, [quest.stat]: (state.stats[quest.stat] || 0) + quest.statValue }
     }
 
-    // Level up check
     const requiredXP = getRequiredXP(newState.level)
     if (newState.currentXP >= requiredXP) {
       newState.currentXP -= requiredXP
@@ -294,14 +409,12 @@ function App() {
       showToast('⚔️', `Level Up! Level ${newState.level}`)
     }
 
-    // Rank check
     const newRank = getCurrentRank()
     if (newRank.name !== state.rank) {
       newState.rank = newRank.name
       showToast('🏅', `Rank Up! ${newRank.name}`)
     }
 
-    // Achievement check
     const newAchievements = [...newState.achievements]
     if (newState.totalQuests >= 1 && !newAchievements.includes('first_quest')) newAchievements.push('first_quest')
     if (newState.totalQuests >= 10 && !newAchievements.includes('quest_10')) newAchievements.push('quest_10')
@@ -331,20 +444,138 @@ function App() {
     showToast('↩️', 'Quest undone')
   }
 
-  const addQuest = async () => {
-    const name = prompt('Quest name:')
-    if (!name) return
-    const diff = prompt('Difficulty? (easy/normal/hard/elite/boss)', 'normal')
-    const stat = prompt('Stat? (strength/intelligence/discipline/focus/vitality/willpower)', 'discipline')
+  // ==========================================
+  // ADD QUEST FUNCTIONS
+  // ==========================================
+  const openAddModal = () => setAddModalOpen(true)
+  const closeAddModal = () => {
+    setAddModalOpen(false)
+    setAddMode('quick')
+    setQuickInput('')
+    setGuidedStep(1)
+    setGuidedData({ category: '', type: 'build', frequency: 'daily', target: '', difficulty: 'normal' })
+    setAiSuggestions([])
+  }
+
+  const handleQuickAdd = () => {
+    if (!quickInput.trim()) return
+    
+    const parsed = parseNaturalLanguage(quickInput)
+    const newQuest = {
+      id: `quest_${Date.now()}`,
+      title: parsed.title,
+      stat: parsed.stat,
+      category: parsed.category,
+      difficulty: parsed.difficulty,
+      xp: DIFFICULTY_XP[parsed.difficulty],
+      coins: DIFFICULTY_COINS[parsed.difficulty],
+      statValue: Math.ceil(DIFFICULTY_XP[parsed.difficulty] / 5),
+      completed: false,
+      streak: 0,
+      icon: getStatIcon(parsed.stat)
+    }
+
+    const newState = { ...state, quests: [...state.quests, newQuest] }
+    saveData(newState)
+    showToast('✅', `Quest "${parsed.title}" added!`)
+    closeAddModal()
+  }
+
+  const handleGuidedAdd = () => {
+    const cat = CATEGORIES.find(c => c.id === guidedData.category) || CATEGORIES[0]
+    const title = guidedData.target || `${guidedData.category} habit`
     
     const newQuest = {
       id: `quest_${Date.now()}`,
-      title: name,
-      stat,
-      difficulty: diff,
-      xp: DIFFICULTY_XP[diff] || 20,
-      coins: DIFFICULTY_COINS[diff] || 10,
-      statValue: Math.ceil((DIFFICULTY_XP[diff] || 20) / 5),
+      title: title.charAt(0).toUpperCase() + title.slice(1),
+      stat: cat.stat,
+      category: guidedData.category,
+      difficulty: guidedData.difficulty,
+      xp: DIFFICULTY_XP[guidedData.difficulty],
+      coins: DIFFICULTY_COINS[guidedData.difficulty],
+      statValue: Math.ceil(DIFFICULTY_XP[guidedData.difficulty] / 5),
+      completed: false,
+      streak: 0,
+      icon: cat.icon
+    }
+
+    const newState = { ...state, quests: [...state.quests, newQuest] }
+    saveData(newState)
+    showToast('✅', `Quest "${newQuest.title}" added!`)
+    closeAddModal()
+  }
+
+  const handleAIGenerate = async () => {
+    setAiLoading(true)
+    
+    const context = `User: ${state.username}, Level: ${state.level}, Rank: ${state.rank}, Streak: ${state.streak}, Stats: STR ${state.stats.strength}, INT ${state.stats.intelligence}, DIS ${state.stats.discipline}, FOC ${state.stats.focus}, VIT ${state.stats.vitality}, WIL ${state.stats.willpower}, CHA ${state.stats.charisma}, Path: ${state.path}, Goals: ${state.goals.join(', ')}`
+    
+    try {
+      const response = await fetch(GROQ_API_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { role: 'system', content: `You are a helpful habit coach for a gamified self-improvement app. Generate 3 personalized daily quests for the user. Each quest should:
+1. Have a clear, actionable title
+2. Boost a relevant stat
+3. Be realistic and achievable
+4. Match the user's current level and capacity
+
+Format your response as a JSON array like this:
+[
+  {"title": "Quest Title", "stat": "stat_name", "category": "category_id", "difficulty": "easy/normal/hard", "reason": "Why this helps the user"}
+]
+
+Current user context: ${context}` },
+            { role: 'user', content: 'Generate 3 personalized quests for me based on my profile' }
+          ],
+          temperature: 0.7,
+          max_tokens: 1024
+        })
+      })
+      
+      const data = await response.json()
+      const responseText = data.choices?.[0]?.message?.content || '[]'
+      
+      // Try to parse JSON from response
+      let suggestions = []
+      try {
+        // Extract JSON array from response
+        const jsonMatch = responseText.match(/\[[\s\S]*\]/)
+        if (jsonMatch) {
+          suggestions = JSON.parse(jsonMatch[0])
+        }
+      } catch (e) {
+        console.error('Parse error:', e)
+      }
+      
+      setAiSuggestions(suggestions)
+    } catch (e) {
+      console.error('AI error:', e)
+      showToast('❌', 'Failed to generate suggestions')
+    }
+    
+    setAiLoading(false)
+  }
+
+  const addAISuggestion = (suggestion) => {
+    const stat = suggestion.stat || 'discipline'
+    const difficulty = suggestion.difficulty || 'normal'
+    
+    const newQuest = {
+      id: `quest_${Date.now()}`,
+      title: suggestion.title,
+      stat: stat,
+      category: suggestion.category || 'productivity',
+      difficulty: difficulty,
+      xp: DIFFICULTY_XP[difficulty],
+      coins: DIFFICULTY_COINS[difficulty],
+      statValue: Math.ceil(DIFFICULTY_XP[difficulty] / 5),
       completed: false,
       streak: 0,
       icon: getStatIcon(stat)
@@ -352,17 +583,22 @@ function App() {
 
     const newState = { ...state, quests: [...state.quests, newQuest] }
     saveData(newState)
-    showToast('✅', 'Quest added!')
+    showToast('✅', `Quest "${suggestion.title}" added!`)
+    setAiSuggestions(prev => prev.filter(s => s.title !== suggestion.title))
   }
 
   // ==========================================
-  // AI FUNCTIONS
+  // AI CHAT FUNCTIONS
   // ==========================================
-  const getContext = () => `User: ${state.username}, Level: ${state.level}, Rank: ${state.rank}, Streak: ${state.streak} days, Total XP: ${state.totalXP}, Path: ${state.path}, Goals: ${state.goals.join(', ')}`
+  const getContext = () => `User: ${state.username}, Level: ${state.level}, Rank: ${state.rank}, Streak: ${state.streak} days, Total XP: ${state.totalXP}, Stats: STR ${state.stats.strength}, INT ${state.stats.intelligence}, DIS ${state.stats.discipline}, FOC ${state.stats.focus}, VIT ${state.stats.vitality}, WIL ${state.stats.willpower}, Path: ${state.path}, Goals: ${state.goals.join(', ')}`
 
-  const askAI = async (message) => {
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || chatLoading) return
+    
+    const userMessage = chatInput.trim()
+    setChatInput('')
+    setChatMessages(prev => [...prev, { role: 'user', content: userMessage }])
     setChatLoading(true)
-    setChatMessages(prev => [...prev, { role: 'user', content: message }])
 
     try {
       const response = await fetch(GROQ_API_URL, {
@@ -374,12 +610,12 @@ function App() {
         body: JSON.stringify({
           model: 'llama-3.1-8b-instant',
           messages: [
-            { role: 'system', content: `You are an ancient AI Oracle guiding a user in a gamified habit tracker. Keep responses short (2-3 sentences), motivating, and actionable. Current context: ${getContext()}` },
+            { role: 'system', content: `You are an ancient AI Oracle guiding a user in a gamified habit tracker. Keep responses short (2-3 sentences), motivating, and actionable. Use **bold** for important words. Current context: ${getContext()}` },
             ...chatMessages,
-            { role: 'user', content: message }
+            { role: 'user', content: userMessage }
           ],
           temperature: 0.7,
-          max_tokens: 256
+          max_tokens: 512
         })
       })
       const data = await response.json()
@@ -389,10 +625,6 @@ function App() {
       setChatMessages(prev => [...prev, { role: 'assistant', content: 'The Oracle has lost connection. Please try again.' }])
     }
     setChatLoading(false)
-  }
-
-  const getSuggestions = () => {
-    askAI('Based on my profile, suggest 3 personalized quests I should add to my quest board.')
   }
 
   // ==========================================
@@ -409,6 +641,9 @@ function App() {
   const completedCount = state.quests.filter(q => q.completed).length
   const rank = getCurrentRank()
   const requiredXP = getRequiredXP(state.level)
+
+  // Find weakest stat
+  const weakestStat = Object.entries(state.stats).sort((a, b) => a[1] - b[1])[0]
 
   if (loading) {
     return (
@@ -440,9 +675,6 @@ function App() {
               <span>🔵</span> Sign in with Google
             </button>
             <p className="hint">Sign in to sync your progress across all devices</p>
-            <button className="btn-guest" onClick={() => { localStorage.setItem('soloLevelingState', JSON.stringify({...state, initialized: true})); setScreen('onboarding') }}>
-              Continue as Guest
-            </button>
           </div>
         </div>
       )}
@@ -564,6 +796,16 @@ function App() {
             </div>
           </div>
 
+          {weakestStat && weakestStat[1] < 20 && (
+            <div className="weak-stat-banner">
+              <span>💡</span>
+              <div>
+                <strong>Your {weakestStat[0]} is weak</strong>
+                <small>Add habits to strengthen this stat</small>
+              </div>
+            </div>
+          )}
+
           <div className="stats-row">
             {Object.entries(state.stats).slice(0, 4).map(([s, v]) => (
               <div key={s} className="stat">
@@ -603,12 +845,11 @@ function App() {
             </div>
           </div>
 
-          <button className="fab" onClick={addQuest}>+</button>
+          <button className="fab" onClick={openAddModal}>+</button>
 
           <nav className="bottom-nav">
             <div className="nav-item active"><span>🏠</span><small>Home</small></div>
-            <div className="nav-item" onClick={getSuggestions}><span>🤖</span><small>AI</small></div>
-            <div className="nav-item" onClick={() => setChatOpen(true)}><span>💬</span><small>Chat</small></div>
+            <div className="nav-item" onClick={() => setChatOpen(true)}><span>💬</span><small>Oracle</small></div>
             <div className="nav-item" onClick={() => setScreen('profile')}><span>👤</span><small>Profile</small></div>
           </nav>
         </div>
@@ -659,6 +900,131 @@ function App() {
         </div>
       )}
 
+      {/* Add Quest Modal */}
+      {addModalOpen && (
+        <div className="modal-overlay" onClick={closeAddModal}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Add Quest</h2>
+              <button className="modal-close" onClick={closeAddModal}>×</button>
+            </div>
+
+            <div className="modal-tabs">
+              <button className={`tab ${addMode === 'quick' ? 'active' : ''}`} onClick={() => setAddMode('quick')}>Quick Add</button>
+              <button className={`tab ${addMode === 'guided' ? 'active' : ''}`} onClick={() => setAddMode('guided')}>Guided</button>
+              <button className={`tab ${addMode === 'ai' ? 'active' : ''}`} onClick={() => setAddMode('ai')}>✨ AI</button>
+            </div>
+
+            {/* Quick Add */}
+            {addMode === 'quick' && (
+              <div className="modal-content">
+                <input
+                  type="text"
+                  placeholder="Type your habit... e.g., 'Read 10 pages' or 'Gym 3x week'"
+                  value={quickInput}
+                  onChange={e => setQuickInput(e.target.value)}
+                  onKeyPress={e => e.key === 'Enter' && handleQuickAdd()}
+                  autoFocus
+                />
+                <div className="quick-tips">
+                  <small>Try: "Read 20 pages daily" or "No junk food today" or "Study 1 hour"</small>
+                </div>
+                <button className="btn-primary" onClick={handleQuickAdd} disabled={!quickInput.trim()}>Add Quest</button>
+              </div>
+            )}
+
+            {/* Guided Add */}
+            {addMode === 'guided' && (
+              <div className="modal-content">
+                {guidedStep === 1 && (
+                  <div className="guided-step">
+                    <h3>What do you want to improve?</h3>
+                    <div className="category-grid">
+                      {CATEGORIES.map(cat => (
+                        <div key={cat.id} className={`cat-card ${guidedData.category === cat.id ? 'selected' : ''}`}
+                          onClick={() => setGuidedData(d => ({ ...d, category: cat.id }))}>
+                          <span>{cat.icon}</span>
+                          <small>{cat.name}</small>
+                        </div>
+                      ))}
+                    </div>
+                    <button className="btn-primary" onClick={() => guidedData.category && setGuidedStep(2)} disabled={!guidedData.category}>Next</button>
+                  </div>
+                )}
+                {guidedStep === 2 && (
+                  <div className="guided-step">
+                    <h3>How often?</h3>
+                    <div className="freq-options">
+                      {['daily', 'weekly', 'monthly'].map(f => (
+                        <button key={f} className={`freq-btn ${guidedData.frequency === f ? 'selected' : ''}`}
+                          onClick={() => setGuidedData(d => ({ ...d, frequency: f }))}>
+                          {f.charAt(0).toUpperCase() + f.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="guided-buttons">
+                      <button className="btn-secondary" onClick={() => setGuidedStep(1)}>Back</button>
+                      <button className="btn-primary" onClick={() => setGuidedStep(3)}>Next</button>
+                    </div>
+                  </div>
+                )}
+                {guidedStep === 3 && (
+                  <div className="guided-step">
+                    <h3>Difficulty</h3>
+                    <div className="diff-options">
+                      {['easy', 'normal', 'hard'].map(d => (
+                        <button key={d} className={`diff-btn ${guidedData.difficulty === d ? 'selected' : ''}`}
+                          onClick={() => setGuidedData(dd => ({ ...dd, difficulty: d }))}>
+                          <span className={`diff-badge diff-${d}`}>{DIFFICULTY_LABEL[d]}</span>
+                          <small>{d.charAt(0).toUpperCase() + d.slice(1)} ({DIFFICULTY_XP[d]} XP)</small>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="guided-buttons">
+                      <button className="btn-secondary" onClick={() => setGuidedStep(2)}>Back</button>
+                      <button className="btn-primary" onClick={handleGuidedAdd}>Add Quest</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* AI Generate */}
+            {addMode === 'ai' && (
+              <div className="modal-content">
+                {aiSuggestions.length === 0 && !aiLoading && (
+                  <div className="ai-generate">
+                    <p>Let AI generate personalized quests based on your stats and weak areas!</p>
+                    <button className="btn-ai" onClick={handleAIGenerate}>✨ Generate For Me</button>
+                    {weakestStat && (
+                      <small className="ai-tip">Based on your weak {weakestStat[0]}, I'll suggest relevant quests.</small>
+                    )}
+                  </div>
+                )}
+                {aiLoading && (
+                  <div className="ai-loading">
+                    <div className="spinner"></div>
+                    <p>Consulting the Oracle...</p>
+                  </div>
+                )}
+                {aiSuggestions.map((sug, i) => (
+                  <div key={i} className="ai-suggestion-card">
+                    <h4>{sug.title}</h4>
+                    <p className="ai-reason">{sug.reason}</p>
+                    <div className="ai-suggestion-meta">
+                      <span className={`diff diff-${sug.difficulty || 'normal'}`}>{DIFFICULTY_LABEL[sug.difficulty || 'normal']}</span>
+                      <span>+{DIFFICULTY_XP[sug.difficulty || 'normal']} XP</span>
+                      <span>{getStatName(sug.stat)} +{Math.ceil(DIFFICULTY_XP[sug.difficulty || 'normal'] / 5)}</span>
+                    </div>
+                    <button className="btn-add-suggestion" onClick={() => addAISuggestion(sug)}>Add Quest</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Chat Modal */}
       {chatOpen && (
         <div className="chat">
@@ -671,7 +1037,7 @@ function App() {
           </div>
           <div className="chat-messages">
             {chatMessages.map((m, i) => (
-              <div key={i} className={`message ${m.role}`}>{m.content}</div>
+              <div key={i} className={`message ${m.role}`} dangerouslySetInnerHTML={{ __html: parseMarkdown(m.content) }} />
             ))}
             {chatLoading && <div className="message assistant">Thinking...</div>}
             <div ref={chatEndRef} />
@@ -682,9 +1048,9 @@ function App() {
               placeholder="Ask the Oracle..."
               value={chatInput}
               onChange={e => setChatInput(e.target.value)}
-              onKeyPress={e => e.key === 'Enter' && chatInput && !chatLoading && (askAI(chatInput), setChatInput(''))}
+              onKeyPress={e => e.key === 'Enter' && chatInput && !chatLoading && (sendChatMessage(), setChatInput(''))}
             />
-            <button onClick={() => chatInput && !chatLoading && (askAI(chatInput), setChatInput(''))} disabled={chatLoading}>➤</button>
+            <button onClick={() => chatInput && !chatLoading && (sendChatMessage(), setChatInput(''))} disabled={chatLoading}>➤</button>
           </div>
         </div>
       )}
