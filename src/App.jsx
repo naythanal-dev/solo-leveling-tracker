@@ -327,16 +327,17 @@ function App() {
   // Quest filters
   const [questFilter, setQuestFilter] = useState('all') // all, daily, weekly, completed
   
-  // Swipe state - mobile-optimized reveal pattern
+  // Swipe state - Telegram-style two-stage
   const [swipeState, setSwipeState] = useState({
     questId: null,
     offsetX: 0,
-    stage: 'idle', // idle, dragging, revealed
+    stage: 'idle', // idle, dragging, revealed, deep
     startX: 0,
     startY: 0,
     isScrolling: false
   })
-  const swipeThreshold = 100
+  const swipeThreshold = 90 // Stage 1 reveal threshold
+  const deepSwipeThreshold = 160 // Stage 2 action threshold
   
   // Add Quest Modal States
   const [addModalOpen, setAddModalOpen] = useState(false)
@@ -684,7 +685,7 @@ function App() {
   }
 
   // ==========================================
-  // SWIPE & QUEST ACTIONS (REVEAL ON LEFT SWIPE)
+  // SWIPE & QUEST ACTIONS (TELEGRAM-STYLE)
   // ==========================================
   
   const closeAllSwipes = () => {
@@ -699,58 +700,75 @@ function App() {
       startX: touch.clientX,
       startY: touch.clientY,
       isScrolling: false,
-      stage: 'idle'
+      stage: 'idle',
+      offsetX: 0
     }))
   }
 
   const handleTouchMove = (e) => {
-    if (!swipeState.questId) return
+    if (!swipeState.questId || swipeState.isScrolling) return
     
     const touch = e.touches[0]
     const deltaX = swipeState.startX - touch.clientX
     const deltaY = touch.clientY - swipeState.startY
     
-    // Detect scroll vs swipe - if vertical movement is greater, treat as scroll
-    if (!swipeState.isScrolling && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 15) {
+    // Detect vertical scroll - if Y movement > X movement, treat as scroll
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
       setSwipeState(prev => ({ ...prev, isScrolling: true }))
       return
     }
     
-    // Only allow left swipe (deltaX > 0 means swiping left)
-    if (deltaX <= 0) {
-      if (swipeState.offsetX > 0) {
-        setSwipeState(prev => ({ ...prev, offsetX: 0, stage: 'idle' }))
-      }
-      return
-    }
+    // Only allow left swipe (deltaX > 0)
+    if (deltaX <= 0) return
     
-    // Smooth tracking - card follows finger
-    const newOffset = Math.min(deltaX, 160)
-    const stage = newOffset >= swipeThreshold ? 'revealed' : 'dragging'
+    // Card follows finger - smooth tracking
+    const newOffset = Math.min(deltaX, 180)
     
     setSwipeState(prev => ({
       ...prev,
       offsetX: newOffset,
-      stage
+      stage: newOffset >= deepSwipeThreshold ? 'deep' : 'revealed'
     }))
   }
 
   const handleTouchEnd = () => {
     if (!swipeState.questId) return
     
-    const { offsetX } = swipeState
+    const { offsetX, stage, questId } = swipeState
     
-    if (offsetX < swipeThreshold / 2) {
+    if (offsetX < swipeThreshold) {
       // Snap back - not enough swipe
       setSwipeState(prev => ({ ...prev, offsetX: 0, stage: 'idle' }))
+    } else if (stage === 'deep') {
+      // Deep swipe - trigger Pin/Unpin
+      togglePin(questId)
+      setSwipeState(prev => ({ ...prev, offsetX: 0, stage: 'idle', questId: null }))
     } else {
       // Keep revealed
       setSwipeState(prev => ({ ...prev, offsetX: swipeThreshold, stage: 'revealed' }))
     }
   }
 
-  const openSwipeActions = (questId) => {
-    setSwipeState(prev => ({ ...prev, questId, offsetX: swipeThreshold, stage: 'revealed' }))
+  const togglePin = (questId) => {
+    const quest = state.quests.find(q => q.id === questId)
+    if (!quest) return
+    
+    const newState = {
+      ...state,
+      quests: state.quests.map(q => {
+        if (q.id === questId) {
+          return { ...q, pinned: !q.pinned }
+        }
+        return q
+      }).sort((a, b) => {
+        // Pinned first, then by creation order
+        if (a.pinned && !b.pinned) return -1
+        if (!a.pinned && b.pinned) return 1
+        return 0
+      })
+    }
+    saveData(newState)
+    showToast(quest.pinned ? '📍' : '📌', quest.pinned ? 'Quest unpinned' : 'Quest pinned')
   }
 
   const openEditModal = (quest) => {
@@ -1509,7 +1527,7 @@ Current user context: ${getContext()}` },
                   return (
                     <div 
                       key={q.id} 
-                      className={`quest-card ${q.completed ? 'completed' : ''} ${q.paused ? 'paused' : ''} ${isSwiped ? 'swiping' : ''} ${isDeep ? 'deep-swipe' : ''}`}
+                      className={`quest-card ${q.completed ? 'completed' : ''} ${q.paused ? 'paused' : ''} ${q.pinned ? 'pinned' : ''} ${isSwiped ? 'swiping' : ''} ${isDeep ? 'deep-swipe' : ''}`}
                       onTouchStart={(e) => !q.completed && handleTouchStart(e, q.id)}
                       onTouchMove={(e) => !q.completed && handleTouchMove(e)}
                       onTouchEnd={(e) => !q.completed && handleTouchEnd(e)}
@@ -1521,7 +1539,7 @@ Current user context: ${getContext()}` },
                           {q.streak > 1 && <span className="streak-badge">🔥{q.streak}</span>}
                         </div>
                         <div className="quest-details">
-                          <h4>{q.title}</h4>
+                          <h4>{q.title} {q.pinned && <span className="pin-indicator">📌</span>}</h4>
                           <div className="quest-meta">
                             <span className={`diff-pill diff-${q.difficulty}`}>{q.difficulty}</span>
                             <span className="stat-tag">{getStatIcon(q.stat)} {getStatName(q.stat)}</span>
@@ -1542,6 +1560,13 @@ Current user context: ${getContext()}` },
                       {isSwiped && (
                         <div className="swipe-panel">
                           <button 
+                            className={`swipe-action ${isDeep ? 'pin-active' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); togglePin(q.id); closeAllSwipes(); }}
+                          >
+                            <span>{q.pinned ? '📍' : '📌'}</span>
+                            <small>{q.pinned ? 'Unpin' : 'Pin'}</small>
+                          </button>
+                          <button 
                             className="swipe-action edit" 
                             onClick={(e) => { e.stopPropagation(); openEditModal(q); }}
                           >
@@ -1549,11 +1574,11 @@ Current user context: ${getContext()}` },
                             <small>Edit</small>
                           </button>
                           <button 
-                            className="swipe-action more" 
-                            onClick={(e) => { e.stopPropagation(); setMoreMenuQuest(q); }}
+                            className="swipe-action delete" 
+                            onClick={(e) => { e.stopPropagation(); confirmDeleteQuest(q); }}
                           >
-                            <span>•••</span>
-                            <small>More</small>
+                            <span>🗑️</span>
+                            <small>Delete</small>
                           </button>
                         </div>
                       )}
@@ -1669,14 +1694,20 @@ Current user context: ${getContext()}` },
           </div>
 
           <div className="section">
-            <h2>All Stats</h2>
-            <div className="stats-grid">
-              {Object.entries(state.stats).map(([s, v]) => (
-                <div key={s} className="stat-card">
-                  <span>{getStatIcon(s)} {s}</span>
-                  <strong>{v}</strong>
-                </div>
-              ))}
+            <h2>Hunter Stats</h2>
+            <div className="stats-panel">
+              <div className="stats-grid-full">
+                {Object.entries(state.stats).map(([s, v]) => (
+                  <div key={s} className="stat-item">
+                    <span className="stat-icon">{getStatIcon(s)}</span>
+                    <span className="stat-label">{getStatName(s)}</span>
+                    <span className="stat-value">{v}</span>
+                    <div className="stat-bar">
+                      <div className="stat-bar-fill" style={{ width: `${Math.min(100, v)}%` }}></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 

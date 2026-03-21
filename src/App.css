@@ -2071,7 +2071,7 @@ body {
   opacity: 0.7;
 }
 
-/* Swipe Panel */
+/* Swipe Panel - Telegram Style */
 .swipe-panel {
   position: absolute;
   right: 0;
@@ -2079,8 +2079,8 @@ body {
   bottom: 0;
   display: flex;
   align-items: center;
-  padding-right: 8px;
-  gap: 6px;
+  padding-right: 6px;
+  gap: 5px;
 }
 
 .swipe-action {
@@ -2088,13 +2088,13 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  width: 64px;
-  height: 64px;
+  gap: 3px;
+  width: 60px;
+  height: 70px;
   border: none;
-  border-radius: 14px;
+  border-radius: 16px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   font-family: 'Rajdhani', sans-serif;
 }
 
@@ -2103,42 +2103,39 @@ body {
 }
 
 .swipe-action small {
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 9px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.swipe-action.complete {
-  background: linear-gradient(135deg, #00c853, #00e676);
+/* Pin action */
+.swipe-action.pin-active {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: white;
+  animation: pulse-armed 0.4s ease infinite;
+}
+
+.swipe-action:not(.pin-active) {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
   color: white;
 }
 
-.swipe-action.complete.armed {
-  background: linear-gradient(135deg, #00ff88, #00ffaa);
-  box-shadow: 0 0 25px rgba(0, 255, 136, 0.5);
-  animation: pulse-armed 0.5s ease infinite;
-}
-
 @keyframes pulse-armed {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
+  0%, 100% { transform: scale(1); box-shadow: none; }
+  50% { transform: scale(1.05); box-shadow: 0 0 20px rgba(251, 191, 36, 0.5); }
 }
 
+/* Edit action - Blue */
 .swipe-action.edit {
   background: linear-gradient(135deg, var(--primary), #0099cc);
   color: white;
 }
 
-.swipe-action.more {
-  background: var(--bg2);
-  border: 2px solid rgba(0, 212, 255, 0.3);
-  color: var(--text2);
-}
-
-.swipe-action.more span {
-  font-size: 18px;
-  letter-spacing: 2px;
+/* Delete action - Red */
+.swipe-action.delete {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
 }
 
 .swipe-action:hover {
@@ -2147,6 +2144,22 @@ body {
 
 .swipe-action:active {
   transform: scale(0.95);
+}
+
+/* Pin indicator on card */
+.pin-indicator {
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.quest-card.pinned .quest-card-content {
+  border-left: 3px solid #fbbf24;
+}
+
+/* Deep swipe visual cue */
+.quest-card.deep-swipe .swipe-action.pin-active {
+  box-shadow: 0 0 30px rgba(251, 191, 36, 0.6);
+  animation: pulse-armed 0.3s ease infinite;
 }
 
 /* More Menu */
